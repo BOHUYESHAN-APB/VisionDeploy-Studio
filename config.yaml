@@ -1,0 +1,172 @@
+environments:
+  ppyolo-xpu:
+    enabled: true
+    priority: 3
+    python_version: '3.10'
+    requirements:
+    - paddlepaddle==2.4.0
+    - paddleocr
+    - opencv-python
+    - numpy
+    - pillow
+  yolov5-cuda:
+    enabled: true
+    priority: 1
+    python_version: '3.8'
+    requirements:
+    - torch==1.10.0+cu113
+    - torchvision==0.11.1+cu113
+    - ultralytics
+    - opencv-python
+    - numpy
+    - pillow
+  yolov8-rocm:
+    enabled: true
+    priority: 2
+    python_version: '3.9'
+    requirements:
+    - torch==2.0.0+rocm5.6
+    - torchvision==0.15.1+rocm5.6
+    - ultralytics
+    - opencv-python
+    - numpy
+    - pillow
+inference:
+  default_confidence: 0.5
+  default_iou: 0.45
+  max_image_size: 1920
+  timeout: 30
+mirrors:
+  model_china: https://hub.fastgit.xyz/ultralytics/assets/releases/download/
+  model_global: https://github.com/ultralytics/assets/releases/download/
+  pip_china: https://mirrors.aliyun.com/pypi/simple/
+  pip_global: https://pypi.org/simple
+  python_china: https://registry.npmmirror.com/-/binary/python/
+  python_global: https://www.python.org/ftp/python/
+models:
+  cnn:
+    mobilenet_v2:
+      description: MobileNetV2模型，轻量级图像分类
+      environment: yolov8-cuda
+      size: 13600000
+      task: classify
+      type: torchvision
+      url: https://download.pytorch.org/models/mobilenet_v2-b0353104.pth
+    resnet50:
+      description: ResNet-50模型，用于图像分类
+      environment: yolov8-cuda
+      size: 97800000
+      task: classify
+      type: torchvision
+      url: https://download.pytorch.org/models/resnet50-19c8e357.pth
+  transformer:
+    vit_b_16:
+      description: Vision Transformer (ViT-B/16)模型
+      environment: yolov8-cuda
+      size: 330300000
+      task: classify
+      type: torchvision
+      url: https://download.pytorch.org/models/vit_b_16-c867db91.pth
+  yolo:
+    ppyolo-r50vd:
+      description: PP-YOLO模型，基于ResNet50vd骨干网络
+      environment: ppyolo-xpu
+      size: 183300000
+      task: detect
+      type: ppyolo
+      url: https://paddledet.bj.bcebos.com/models/ppyolo_r50vd_dcn_1x_coco.pdparams
+    yolov5l:
+      description: YOLOv5 Large模型，高精度
+      environment: yolov5-cuda
+      size: 90900000
+      task: detect
+      type: yolov5
+      url: v6.0/yolov5l.pt
+    yolov5m:
+      description: YOLOv5 Medium模型，中等精度和速度
+      environment: yolov5-cuda
+      size: 40900000
+      task: detect
+      type: yolov5
+      url: v6.0/yolov5m.pt
+    yolov5n:
+      description: YOLOv5 Nano模型，适用于边缘设备
+      environment: yolov5-cuda
+      size: 3900000
+      task: detect
+      type: yolov5
+      url: v6.0/yolov5n.pt
+    yolov5s:
+      description: YOLOv5 Small模型，速度和精度的良好平衡
+      environment: yolov5-cuda
+      size: 14100000
+      task: detect
+      type: yolov5
+      url: v6.0/yolov5s.pt
+    yolov5x:
+      description: YOLOv5 XLarge模型，最高精度
+      environment: yolov5-cuda
+      size: 168600000
+      task: detect
+      type: yolov5
+      url: v6.0/yolov5x.pt
+    yolov8l:
+      description: YOLOv8 Large模型，高精度
+      environment: yolov8-cuda
+      size: 86700000
+      task: detect
+      type: yolov8
+      url: v8.0/yolov8l.pt
+    yolov8m:
+      description: YOLOv8 Medium模型，中等精度和速度
+      environment: yolov8-cuda
+      size: 52200000
+      task: detect
+      type: yolov8
+      url: v8.0/yolov8m.pt
+    yolov8n:
+      description: YOLOv8 Nano模型，适用于边缘设备
+      environment: yolov8-cuda
+      size: 6200000
+      task: detect
+      type: yolov8
+      url: v8.0/yolov8n.pt
+    yolov8s:
+      description: YOLOv8 Small模型，速度和精度的良好平衡
+      environment: yolov8-cuda
+      size: 22600000
+      task: detect
+      type: yolov8
+      url: v8.0/yolov8s.pt
+    yolov8x:
+      description: YOLOv8 XLarge模型，最高精度
+      environment: yolov8-cuda
+      size: 136700000
+      task: detect
+      type: yolov8
+      url: v8.0/yolov8x.pt
+monitoring:
+  cpu_warning_threshold: 85
+  gpu_monitoring: true
+  memory_warning_threshold: 90
+  update_interval: 1.0
+network:
+  china_mirrors:
+  - https://mirrors.aliyun.com/pypi/simple/
+  - https://pypi.tuna.tsinghua.edu.cn/simple/
+  international_mirrors:
+  - https://pypi.org/simple/
+  - https://pypi.python.org/simple/
+  retry_attempts: 3
+  timeout: 30
+paths:
+  downloads: resources/downloads
+  model_environments: environments
+  models: resources/models
+  outputs: outputs
+  python_installations: resources/python
+ui:
+  auto_save_results: true
+  language: zh_CN
+  show_performance_stats: true
+  theme: Dark

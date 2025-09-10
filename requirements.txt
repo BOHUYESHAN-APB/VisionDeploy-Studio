@@ -1,0 +1,25 @@
+# 主应用程序依赖
+dearpygui==1.10.1
+psutil==5.9.8
+requests==2.31.0
+Pillow==10.0.1
+numpy==1.24.4
+opencv-python==4.8.1.78
+PyYAML==6.0.1
+
+# 硬件检测相关
+GPUtil==1.4.0
+
+# 开发工具
+black==23.9.1
+flake8==6.1.0
+isort==5.12.0
+
+# 模型环境依赖（将在各自虚拟环境中安装）
+# torch==1.10.0+cu113         # YOLOv5 CUDA环境
+# torch==2.0.0+rocm5.6        # YOLOv8 ROCm环境  
+# paddlepaddle==2.4.0         # PP-YOLO XPU环境
+# ultralytics==8.0.186        # YOLOv8
+
+# 其他可能需要的依赖
+pynvml==11.5.0

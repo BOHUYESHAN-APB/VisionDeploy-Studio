@@ -1,0 +1,8 @@
+{
+    "dark_mode": true,
+    "performance_monitoring": true,
+    "network_timeout": 30,
+    "network_retries": 3,
+    "models_path": "E:\\CODE\\Astra-Synergy\\\u200bVisionDeploy-Studio\u200b\\resources\\models",
+    "environments_path": "E:\\CODE\\Astra-Synergy\\\u200bVisionDeploy-Studio\u200b\\environments"
+}

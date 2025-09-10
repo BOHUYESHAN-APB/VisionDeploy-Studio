@@ -1,0 +1,83 @@
+{
+  "project_name": "VisionDeploy Studio",
+  "project_description": "专为计算机视觉模型设计的本地部署工具",
+  "third_party_components": [
+    {
+      "name": "DearPyGui",
+      "version": "1.10.1",
+      "url": "https://github.com/hoffstadt/DearPyGui",
+      "license": "MIT License",
+      "license_url": "https://github.com/hoffstadt/DearPyGui/blob/master/LICENSE"
+    },
+    {
+      "name": "psutil",
+      "version": "5.9.8",
+      "url": "https://github.com/giampaolo/psutil",
+      "license": "BSD 3-Clause License",
+      "license_url": "https://github.com/giampaolo/psutil/blob/master/LICENSE"
+    },
+    {
+      "name": "requests",
+      "version": "2.31.0",
+      "url": "https://github.com/psf/requests",
+      "license": "Apache License 2.0",
+      "license_url": "https://github.com/psf/requests/blob/main/LICENSE"
+    },
+    {
+      "name": "Pillow",
+      "version": "10.0.1",
+      "url": "https://github.com/python-pillow/Pillow",
+      "license": "HPND License",
+      "license_url": "https://github.com/python-pillow/Pillow/blob/main/LICENSE"
+    },
+    {
+      "name": "numpy",
+      "version": "1.24.4",
+      "url": "https://github.com/numpy/numpy",
+      "license": "BSD 3-Clause License",
+      "license_url": "https://github.com/numpy/numpy/blob/main/LICENSE.txt"
+    },
+    {
+      "name": "opencv-python",
+      "version": "4.8.1.78",
+      "url": "https://github.com/opencv/opencv-python",
+      "license": "Apache License 2.0",
+      "license_url": "https://github.com/opencv/opencv-python/blob/master/LICENSE"
+    },
+    {
+      "name": "GPUtil",
+      "version": "1.4.0",
+      "url": "https://github.com/anderskm/gputil",
+      "license": "MIT License",
+      "license_url": "https://github.com/anderskm/gputil/blob/master/LICENSE.md"
+    },
+    {
+      "name": "MiSans 字体",
+      "version": "Latest",
+      "url": "https://home.miui.com/",
+      "license": "MiSans字体知识产权许可协议",
+      "license_url": "resources/fonts/MiSans_LICENSE.txt"
+    },
+    {
+      "name": "black",
+      "version": "23.9.1",
+      "url": "https://github.com/psf/black",
+      "license": "MIT License",
+      "license_url": "https://github.com/psf/black/blob/main/LICENSE"
+    },
+    {
+      "name": "flake8",
+      "version": "6.1.0",
+      "url": "https://github.com/PyCQA/flake8",
+      "license": "MIT License",
+      "license_url": "https://github.com/PyCQA/flake8/blob/main/LICENSE"
+    },
+    {
+      "name": "isort",
+      "version": "5.12.0",
+      "url": "https://github.com/PyCQA/isort",
+      "license": "MIT License",
+      "license_url": "https://github.com/PyCQA/isort/blob/main/LICENSE"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+version: '1.0'
+detection_time: '2025-09-10 10:24:45'
+hardware:
+  gpu:
+  - brand: Intel
+    type: integrated
+    detected: true
+  cpu:
+    brand: Intel
+    name: Intel64 Family 6 Model 197 Stepping 2, GenuineIntel
+    cores: '14'
+    arch: AMD64
+  os: Windows 11
+  detection_stage: initial
