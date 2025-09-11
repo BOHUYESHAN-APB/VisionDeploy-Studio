@@ -108,14 +108,38 @@ class ApplicationUI:
             
             # 创建视口并启动 DPG
             try:
-                if not dpg.is_viewport_created():
-                    dpg.create_viewport(title='VisionDeploy Studio', width=1200, height=800)
+                # 兼容不同版本的 DearPyGui：优先使用 is_viewport_ok(viewport)
+                is_viewport_ok = getattr(dpg, 'is_viewport_ok', None)
+                created = False
+                if callable(is_viewport_ok):
+                    try:
+                        if not is_viewport_ok(0):
+                            dpg.create_viewport(title='VisionDeploy Studio', width=1200, height=800)
+                            created = True
+                    except Exception:
+                        pass
+                else:
+                    # 旧版回退：使用 is_viewport_created
+                    try:
+                        if not getattr(dpg, 'is_viewport_created', lambda: False)():
+                            dpg.create_viewport(title='VisionDeploy Studio', width=1200, height=800)
+                            created = True
+                    except:
+                        pass
+                # 若仍未创建，尝试一次性创建（兜底）
+                if not created:
+                    try:
+                        dpg.create_viewport(title='VisionDeploy Studio', width=1200, height=800)
+                    except:
+                        pass
             except:
-                try:
-                    dpg.create_viewport(title='VisionDeploy Studio', width=1200, height=800)
-                except:
-                    pass
+                pass
             dpg.setup_dearpygui()
+            # 确保视口可见：显式显示视口以兼容不同 DPG 版本
+            try:
+                dpg.show_viewport()
+            except Exception:
+                pass
             
             # 应用首次布局与字体调整
             def _apply_layout_inner():

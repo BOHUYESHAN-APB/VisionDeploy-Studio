@@ -98,32 +98,58 @@ class MainApplication:
         try:
             self.ui.setup_ui()
             # 显示视图端口
-            self.ui.dpg.show_viewport()
+            try:
+                self.ui.dpg.show_viewport()
+            except Exception:
+                pass
         except Exception as e:
             self.logger.error(f"设置UI时出错: {e}")
             raise
         
         # 启动性能监控
-        if self.app_state['performance_monitoring']:
-            self.performance_monitor.start_monitoring()
+        if self.app_state.get('performance_monitoring'):
+            try:
+                self.performance_monitor.start_monitoring()
+            except Exception:
+                pass
         
         # 加载模型列表
-        self.model_handlers.refresh_models()
+        try:
+            self.model_handlers.refresh_models()
+        except Exception:
+            pass
         
         # 加载环境列表
-        self.environment_handlers.refresh_environments()
+        try:
+            self.environment_handlers.refresh_environments()
+        except Exception:
+            pass
         
-        # 主循环
-        while self.ui.dpg.is_dearpygui_running():
-            # 更新UI上的性能数据
-            if self.app_state['performance_monitoring']:
-                self.performance_monitor.update_ui()
-            
-            # 渲染帧
-            self.ui.dpg.render_dearpygui_frame()
+        # 使用 DearPyGUI 的内置循环来确保 viewport 正确启动（相较于手动 render 循环更稳定）
+        try:
+            # 尝试以非阻塞方式启动（某些 DPG 版本需直接调用 start_dearpygui）
+            self.ui.dpg.start_dearpygui()
+        except Exception:
+            # 若 start_dearpygui 不可用或抛异常，尝试手动渲染循环作为回退
+            try:
+                while self.ui.dpg.is_dearpygui_running():
+                    if self.app_state.get('performance_monitoring'):
+                        try:
+                            self.performance_monitor.update_ui()
+                        except:
+                            pass
+                    try:
+                        self.ui.dpg.render_dearpygui_frame()
+                    except:
+                        break
+            except Exception:
+                pass
         
         # 清理资源
-        self.core.cleanup()
+        try:
+            self.core.cleanup()
+        except Exception:
+            pass
     
     # 代理方法到各个处理模块
     def refresh_models(self):
