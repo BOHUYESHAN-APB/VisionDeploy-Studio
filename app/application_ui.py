@@ -100,44 +100,53 @@ class ApplicationUI:
         dpg.render_dearpygui_frame()
     
     def _load_chinese_font(self):
-        """加载中文字体以支持中文显示"""
+        """加载中文字体以支持中文显示（使用 app.font_initializer 统一初始化）"""
         try:
-            # 定义字体文件优先级列表
-            font_files = [
-                "MiSans-Regular.otf",
-                "MiSans-Normal.otf",
-                "MiSans-Medium.otf",
-                "MiSans-Semibold.otf",
-                "MiSans-Bold.otf",
-                "MiSans-Demibold.otf",
-                "MiSans-Light.otf",
-                "MiSans-ExtraLight.otf",
-                "MiSans-Thin.otf",
-                "MiSans-Heavy.otf",
-                "NotoSansCJKsc-Regular.otf"
-            ]
-            
-            # 查找可用的字体文件
-            font_path = None
-            for font_file in font_files:
-                path = os.path.join(self.app.base_dir, "resources", "fonts", font_file)
-                if os.path.exists(path):
-                    font_path = path
-                    break
-            
-            # 如果找到字体文件，则加载
-            if font_path:
-                # 加载字体
-                with dpg.font_registry():
-                    default_font = dpg.add_font(font_path, 18)
-                    dpg.bind_font(default_font)
-                self.app.logger.info(f"成功加载中文字体: {font_path}")
+            from app.font_initializer import initialize_chinese_font, initialize_chinese_font_debug
+        except Exception:
+            # 无法导入初始化模块，保持向后兼容
+            try:
+                self.app.logger.warning("无法导入 app.font_initializer，跳过字体初始化")
+            except:
+                pass
+            return False
+
+        # 尝试从应用对象获取 base_dir，若不存在则回退到项目根邻接推断
+        project_root = getattr(self.app, "base_dir", None)
+        if not project_root:
+            try:
+                from pathlib import Path
+                project_root = str(Path(__file__).resolve().parents[1])
+            except:
+                project_root = "."
+
+        try:
+            success = initialize_chinese_font(project_root)
+            if success:
+                try:
+                    self.app.logger.info("字体初始化成功（来自 app.font_initializer）")
+                except:
+                    pass
                 return True
             else:
-                self.app.logger.warning("未找到可用的中文字体文件，将使用系统默认字体")
+                try:
+                    self.app.logger.warning("字体初始化模块未找到可用字体，继续使用系统默认字体")
+                except:
+                    pass
                 return False
         except Exception as e:
-            self.app.logger.warning(f"加载中文字体失败: {e}，将使用系统默认字体")
+            # 尝试获取更详细的调试信息并记录
+            try:
+                dbg = initialize_chinese_font_debug(project_root)
+                try:
+                    self.app.logger.warning(f"调用字体初始化失败: {e}; debug={dbg}")
+                except:
+                    pass
+            except:
+                try:
+                    self.app.logger.warning(f"调用字体初始化失败: {e}")
+                except:
+                    pass
             return False
     
     def _setup_models_tab(self):

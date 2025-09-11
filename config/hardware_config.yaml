@@ -1,5 +1,5 @@
 version: '1.0'
-detection_time: '2025-09-10 10:24:45'
+detection_time: '2025-09-10 11:50:34'
 hardware:
   gpu:
   - brand: Intel

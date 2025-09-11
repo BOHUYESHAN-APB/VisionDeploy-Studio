@@ -1,0 +1,20 @@
+Temp remove candidates for VisionDeploy-Studio
+
+- [安全删除] temp/test_font_init.py — 临时验证脚本，已运行验证字体加载，可删除。
+
+- [需人工复核] test_core.py — 项目级测试，若保留请移动到 tests/ 并配置 CI。
+- [需人工复核] test_final.py — 同上。
+- [需人工复核] test_gui_full.py — 同上。
+- [需人工复核] test_gui.py — 同上。
+- [需人工复核] test_simple.py — 同上。
+- [需人工复核] test_ui.py — 同上。
+
+- [需人工复核] tools/create_test_model.py — 开发/生成工具，若不再使用可归档或删除。
+- [需人工复核] tools/download_models.py, tools/download_models_cn.py — 外部模型下载脚本，确认是否仍需保留。
+
+- [需人工复核] core/environment_manager_fixed.py, core/environment_manager_simple.py — 备份/替代实现，若无用应归档。
+
+推荐操作：
+1) 将所有 test_*.py 移到 tests/ 并由 CI 管理，或删除不再需要的文件。
+2) 对 [需人工复核] 项目逐一人工检查再删除，优先归档至 tools/archive/ 或 docs/notes/。
+3) 在删除前创建 Git 分支并提交以便回滚。
