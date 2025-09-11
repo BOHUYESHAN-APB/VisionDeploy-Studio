@@ -30,14 +30,33 @@ class PerformanceMonitor:
         self.gpu_monitor = self._create_gpu_monitor()
         
     def _init_gpu_data(self) -> Dict:
-        """初始化GPU数据结构"""
-        gpu_info = self.detector.get_device_summary().get('gpu', [{}])[0]
+        """初始化GPU数据结构（容错）"""
+        # 安全获取 GPU 列表并处理为空的情况，避免 IndexError
+        gpu_list = self.detector.get_device_summary().get('gpu', [])
+        gpu_info = gpu_list[0] if isinstance(gpu_list, list) and len(gpu_list) > 0 else {}
+
+        # 解析 memory 字段，兼容 "4096 MB", "4 GB" 等格式，解析失败返回 0.0
+        memory_total = 0.0
+        if 'memory' in gpu_info:
+            mem_val = str(gpu_info.get('memory', '')).strip()
+            try:
+                # 常见格式以空格分隔，取第一个数值部分
+                memory_total = float(mem_val.split()[0])
+            except Exception:
+                try:
+                    import re
+                    m = re.search(r"([\d\.]+)", mem_val)
+                    if m:
+                        memory_total = float(m.group(1))
+                except Exception:
+                    memory_total = 0.0
+
         return {
             'brand': gpu_info.get('brand', 'Unknown'),
             'name': gpu_info.get('name', 'None'),
             'usage': 0,
             'memory_usage': 0,
-            'memory_total': float(gpu_info.get('memory', '0').split()[0]) if 'memory' in gpu_info else 0,
+            'memory_total': memory_total,
             'type': gpu_info.get('type', 'unknown')
         }
 
