@@ -1,0 +1,63 @@
+{
+  "metadata": {
+    "generated_by": "VisionDeploy Studio",
+    "format_version": 1
+  },
+  "mirrors": {
+    "cn": "https://mirror.example.cn/models",
+    "global": "https://models.example.com"
+  },
+  "models": [
+    {
+      "id": "yolov5s",
+      "family": "yolov5",
+      "display_name": "YOLOv5s",
+      "versions": [
+        {
+          "version": "v6.0",
+          "filename": "yolov5s.pt",
+          "size": 14621408,
+          "checksums": {
+            "sha256": ""
+          },
+          "urls": {
+            "official": "https://github.com/ultralytics/yolov5/releases/download/v6.0/yolov5s.pt",
+            "huggingface": "https://huggingface.co/ultralytics/yolov5/resolve/main/yolov5s.pt",
+            "mirror_cn": "https://mirror.example.cn/models/yolov5s.pt"
+          },
+          "quantized": [
+            {
+              "name": "yolov5s-int8",
+              "filename": "yolov5s-int8.pt",
+              "urls": {
+                "mirror_cn": "https://mirror.example.cn/models/yolov5s-int8.pt",
+                "official": ""
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "yolov8n",
+      "family": "yolov8",
+      "display_name": "YOLOv8n",
+      "versions": [
+        {
+          "version": "v1.0",
+          "filename": "yolov8n.pt",
+          "size": 8192000,
+          "checksums": {
+            "sha256": ""
+          },
+          "urls": {
+            "official": "https://github.com/ultralytics/ultralytics/releases/download/v1.0/yolov8n.pt",
+            "huggingface": "https://huggingface.co/ultralytics/yolov8/resolve/main/yolov8n.pt",
+            "mirror_cn": "https://mirror.example.cn/models/yolov8n.pt"
+          },
+          "quantized": []
+        }
+      ]
+    }
+  ]
+}

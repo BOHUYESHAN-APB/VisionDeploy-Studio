@@ -84,72 +84,63 @@ class MainApplication:
         return False
     
     def run(self):
-        """运行应用程序"""
+        """运行应用程序 — 使用 app.gui_application.YOLODeployApp 作为入口"""
         # 初始化日志
         self.core.init_logging()
-        self.logger.info("项目结构验证通过")
         self.logger = logging.getLogger("VisionDeploy.MainApplication")
-        self.logger.info("正在启动VisionDeploy Studio...")
-        
+        self.logger.info("正在启动 VisionDeploy Studio（优先使用 CTk 前端）")
+
         # 加载配置
         self.core.load_config()
-        
-        # 设置UI
+
+        # 首选 CTk 前端（app.gui_ctk.MainApp），若不可用则回退到已归档的 YOLODeployApp
         try:
-            self.ui.setup_ui()
-            # 显示视图端口
             try:
-                self.ui.dpg.show_viewport()
+                from app.gui_ctk import MainApp as CTkMainApp
             except Exception:
-                pass
+                CTkMainApp = None
+
+            if CTkMainApp:
+                self.logger.info("使用 app.gui_ctk.MainApp 启动 CTk 前端")
+                app_gui = CTkMainApp()
+                # CTk MainApp 实现使用 setup() 然后进入主循环
+                try:
+                    app_gui.setup()
+                    # Do not directly call mainloop here; delegate to GUI implementation to run.
+                    # If MainApp exposes a run method, call it; otherwise assume setup created root.
+                    if hasattr(app_gui, 'run') and callable(app_gui.run):
+                        app_gui.run()
+                    else:
+                        # try to start Tk mainloop if present
+                        root = getattr(app_gui, 'root', None)
+                        if root is not None:
+                            try:
+                                root.mainloop()
+                            except Exception:
+                                pass
+                except Exception:
+                    # 如果 CTk 启动失败，继续回退逻辑
+                    raise
+            else:
+                raise ImportError("CTk 前端不可用")
         except Exception as e:
-            self.logger.error(f"设置UI时出错: {e}")
-            raise
-        
-        # 启动性能监控
-        if self.app_state.get('performance_monitoring'):
+            self.logger.warning(f"CTk 前端启动失败或不可用，回退到 YOLODeployApp: {e}")
+            import traceback
+            traceback.print_exc()
             try:
-                self.performance_monitor.start_monitoring()
-            except Exception:
-                pass
-        
-        # 加载模型列表
-        try:
-            self.model_handlers.refresh_models()
-        except Exception:
-            pass
-        
-        # 加载环境列表
-        try:
-            self.environment_handlers.refresh_environments()
-        except Exception:
-            pass
-        
-        # 使用 DearPyGUI 的内置循环来确保 viewport 正确启动（相较于手动 render 循环更稳定）
-        try:
-            # 尝试以非阻塞方式启动（某些 DPG 版本需直接调用 start_dearpygui）
-            self.ui.dpg.start_dearpygui()
-        except Exception:
-            # 若 start_dearpygui 不可用或抛异常，尝试手动渲染循环作为回退
-            try:
-                while self.ui.dpg.is_dearpygui_running():
-                    if self.app_state.get('performance_monitoring'):
-                        try:
-                            self.performance_monitor.update_ui()
-                        except:
-                            pass
-                    try:
-                        self.ui.dpg.render_dearpygui_frame()
-                    except:
-                        break
-            except Exception:
-                pass
-        
-        # 清理资源
-        try:
-            self.core.cleanup()
-        except Exception:
-            pass
+                from app.gui_application import YOLODeployApp
+                self.logger.info("实例化 YOLODeployApp 并运行（回退）")
+                app_gui = YOLODeployApp()
+                app_gui.run()
+            except Exception as e2:
+                self.logger.error(f"启动 GUI 应用失败: {e2}")
+                import traceback as _tb
+                _tb.print_exc()
+                try:
+                    self.core.cleanup()
+                except Exception:
+                    pass
+                raise
     
     # 代理方法到各个处理模块
     def refresh_models(self):

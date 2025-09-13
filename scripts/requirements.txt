@@ -1,0 +1,18 @@
+# Copy of repository requirements.txt
+# Edit the root requirements.txt to change dependencies.
+
+dearpygui==1.10.1
+psutil==5.9.8
+requests==2.31.0
+Pillow==10.0.1
+numpy==1.24.4
+opencv-python==4.8.1.78
+PyYAML==6.0.1
+
+GPUtil==1.4.0
+
+black==23.9.1
+flake8==6.1.0
+isort==5.12.0
+
+pynvml==11.5.0

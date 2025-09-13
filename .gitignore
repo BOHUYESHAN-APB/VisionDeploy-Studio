@@ -61,3 +61,6 @@ test_inference.jpg
 # Application data
 app_data/
 user_data/
+
+# Local temporary archives for developer experiments (do not commit)
+temp/TeMP/

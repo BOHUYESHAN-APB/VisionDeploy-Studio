@@ -18,8 +18,10 @@ def main():
     
     try:
         print("正在导入模块...")
-        import dearpygui.dearpygui as dpg
-        print("✅ DearPyGui 导入成功")
+        # DearPyGui usage archived; see legacy_dearpygui/ for original tests
+        print("DearPyGui tests have been archived to legacy_dearpygui/")
+
+    # The remainder of the original test has been archived.
         
         from app.application_ui import ApplicationUI
         print("✅ ApplicationUI 导入成功")

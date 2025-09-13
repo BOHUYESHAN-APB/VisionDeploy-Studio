@@ -1,0 +1,25 @@
+Patch summary - app/gui_ctk.py changes
+
+1) Fixed _on_reload_fonts thread startup
+   - Ensured worker thread is started outside of exception handling to avoid missing thread start.
+   - Kept best-effort rebind_default_font calls.
+
+2) Repaired _on_prepare_env early-return and reinserted open_dialog
+   - When OnDemandEnvironmentManager is missing, now early-return and set a status message.
+   - Reinserted a robust open_dialog implementation that wires to start_prepare, request_cancel and export_log.
+
+3) Completed refresh_model_list fallback and device population
+   - Implemented hardware_detector lookup (get_device_summary / get_summary) with defensive fallbacks.
+   - Translate GPU entries to readable labels and populate CTk/tk device menus.
+   - Keep previous device selection when possible; otherwise set sensible default.
+
+4) Completed static fallback branch for refresh_model_list
+   - Populate simple static item list if main path fails.
+
+5) Ran file-level static checks (no errors reported by static analyzer used in workspace).
+
+Notes:
+- These are local edits to app/gui_ctk.py to make CTk frontend more robust and import-safe.
+- Please run local functional test: python temp/test_import_gui_ctk.py or start the app to validate runtime behavior on your machine.
+
+End of patch summary.

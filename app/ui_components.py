@@ -1,124 +1,40 @@
-"""
-UI组件模块 - VisionDeploy Studio
-包含所有UI组件的创建和管理功能
+"""Compatibility shim for UI components.
+
+The original DearPyGui-based `app/ui_components.py` has been archived to
+`legacy_dearpygui/ui_components.py`. This shim exposes a minimal
+`refresh_model_controls` function expected by `app/gui_ctk.py`.
+
+The goal is to keep runtime imports working while removing the heavy
+DearPyGui dependency from the main code path.
 """
 
-import os
-import sys
-import dearpygui.dearpygui as dpg
-from typing import Dict, List, Any, Optional, Tuple, Union, Callable
+from typing import Dict, Any
+from pathlib import Path
 
-class UIComponents:
-    """UI组件类，负责创建和管理所有UI元素"""
-    
-    def __init__(self, app):
-        """初始化UI组件
-        
-        Args:
-            app: 主应用程序实例
-        """
-        self.app = app
-        self.base_dir = app.base_dir
-        
-        # 主题
-        self.dark_theme = None
-        self.light_theme = None
-    
-    def init_themes(self):
-        """初始化主题"""
-        # 设置主题
-        with dpg.theme() as self.dark_theme:
-            with dpg.theme_component(dpg.mvAll):
-                dpg.add_theme_color(dpg.mvThemeCol_WindowBg, (25, 25, 25))
-                dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (40, 40, 40))
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (60, 60, 60))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (70, 70, 70))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (80, 80, 80))
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (255, 255, 255))
-                dpg.add_theme_color(dpg.mvThemeCol_TabActive, (65, 105, 225))
-                dpg.add_theme_color(dpg.mvThemeCol_TabHovered, (70, 130, 255))
-                dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive, (65, 105, 225))
-        
-        with dpg.theme() as self.light_theme:
-            with dpg.theme_component(dpg.mvAll):
-                dpg.add_theme_color(dpg.mvThemeCol_WindowBg, (240, 240, 240))
-                dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (220, 220, 220))
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (200, 200, 200))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (190, 190, 190))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (180, 180, 180))
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (0, 0, 0))
-                dpg.add_theme_color(dpg.mvThemeCol_TabActive, (100, 150, 255))
-                dpg.add_theme_color(dpg.mvThemeCol_TabHovered, (120, 170, 255))
-                dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive, (100, 150, 255))
-    
-    def apply_theme(self, dark_mode=True):
-        """应用主题
-        
-        Args:
-            dark_mode: 是否使用暗色主题
-        """
-        if dark_mode and self.dark_theme:
-            dpg.bind_theme(self.dark_theme)
-        elif not dark_mode and self.light_theme:
-            dpg.bind_theme(self.light_theme)
-        else:
-            # 如果主题未初始化，使用默认主题
-            dpg.bind_theme(0)  # 使用0而不是None
-    
-    def reset_layout(self):
-        """重置布局"""
-        # 这里可以添加重置布局的逻辑
+def refresh_model_controls(controls: Dict[str, Any], list_models_callable, hardware_detector=None):
+    """Minimal implementation used by CTk frontend to populate model/device lists.
+
+    This intentionally implements a small subset of the original behavior.
+    If full DearPyGui functionality is needed, check legacy_dearpygui/ui_components.py
+    """
+    try:
+        models = list_models_callable() or []
+        items = ["自动选择"] + [f"{m.get('display_name') or m.get('id')} ({m.get('id')})" for m in models]
+        mv = controls.get('model_var')
+        mm = controls.get('model_menu')
+        if mm is not None and hasattr(mm, 'configure'):
+            try:
+                mm.configure(values=items)
+                if mv is not None and getattr(mv, 'get', None) and mv.get() in items:
+                    mv.set(mv.get())
+                elif mv is not None and getattr(mv, 'set', None):
+                    mv.set(items[0])
+            except Exception:
+                # best-effort no-op
+                pass
+    except Exception:
         pass
-    
-    def create_main_window(self):
-        """创建主窗口"""
-        # 主窗口
-        with dpg.window(label="VisionDeploy Studio", tag="main_window", no_title_bar=True, no_resize=True, no_move=True, no_collapse=True):
-            # 顶部菜单栏
-            with dpg.menu_bar():
-                with dpg.menu(label="文件"):
-                    dpg.add_menu_item(label="设置", callback=self.app.show_settings)
-                    dpg.add_menu_item(label="退出", callback=self.app.exit_app)
-                
-                with dpg.menu(label="视图"):
-                    dpg.add_menu_item(label="切换暗色/亮色模式", callback=self.app.toggle_theme)
-                    dpg.add_menu_item(label="重置布局", callback=self.app.reset_layout)
-                
-                with dpg.menu(label="帮助"):
-                    dpg.add_menu_item(label="关于", callback=self.app.show_about)
-                    dpg.add_menu_item(label="文档", callback=self.app.open_docs)
-            
-            # 主要内容区域
-            with dpg.tab_bar(tag="main_tabs"):
-                # 仪表盘标签页
-                with dpg.tab(label="仪表盘", tag="dashboard_tab"):
-                    self.create_dashboard_tab()
-                
-                # 模型浏览器标签页
-                with dpg.tab(label="模型浏览器", tag="model_browser_tab"):
-                    self.create_model_browser_tab()
-                
-                # 推理标签页
-                with dpg.tab(label="推理", tag="inference_tab"):
-                    self.create_inference_tab()
-                
-                # 环境管理标签页
-                with dpg.tab(label="环境管理", tag="environment_tab"):
-                    self.create_environment_tab()
-                
-                # 设置标签页
-                with dpg.tab(label="设置", tag="settings_tab"):
-                    self.create_settings_tab()
-            
-            # 底部状态栏
-            with dpg.group(horizontal=True):
-                dpg.add_text("状态: 就绪")
-                dpg.add_spacer(width=20)
-                dpg.add_text(f"最佳设备: {self.app.device_summary['best_device']['type'].upper()} - {self.app.device_summary['best_device']['name']}")
-                dpg.add_spacer(width=20)
-                dpg.add_text(f"Python: {sys.version.split()[0]}")
-                dpg.add_spacer(width=20)
-                dpg.add_text("VisionDeploy Studio v1.0.0")
+
     
     def create_dashboard_tab(self):
         """创建仪表盘标签页"""
@@ -480,3 +396,236 @@ class UIComponents:
             # 保存设置按钮
             dpg.add_button(label="保存设置", callback=self.app.save_settings)
             dpg.add_button(label="重置设置", callback=self.app.reset_settings)
+# ---- CTk-compatible helper factories (用于 CustomTkinter 前端的可复用控件) ----
+def create_status_labels_ctk(parent, use_ctk=True):
+    """
+    在侧边栏创建并返回一组状态/设备/模型标签，兼容 customtkinter 与 tkinter。
+    返回: dict { "status_label": widget, "device_label": widget, "model_label": widget }
+    """
+    try:
+        if use_ctk:
+            import customtkinter as ctk
+            status = ctk.CTkLabel(parent, text="就绪")
+            device = ctk.CTkLabel(parent, text="设备: 未检测")
+            model = ctk.CTkLabel(parent, text="模型: 未选择")
+        else:
+            import tkinter as tk
+            status = tk.Label(parent, text="就绪")
+            device = tk.Label(parent, text="设备: 未检测")
+            model = tk.Label(parent, text="模型: 未选择")
+    except Exception:
+        # 最后回退到 tkinter
+        import tkinter as tk
+        status = tk.Label(parent, text="就绪")
+        device = tk.Label(parent, text="设备: 未检测")
+        model = tk.Label(parent, text="模型: 未选择")
+    return {"status_label": status, "device_label": device, "model_label": model}
+
+
+def create_model_controls_ctk(parent, use_ctk=True):
+    """
+    创建一组模型选择相关控件（model menu, mirror, quant, device）。
+    返回 dict 包含变量与控件，便于在 gui_ctk 中接入。
+    Keys: model_var, model_menu, mirror_var, mirror_menu, quant_var, quant_menu, device_var, device_menu
+    """
+    controls = {}
+    try:
+        if use_ctk:
+            import customtkinter as ctk
+            controls["model_var"] = ctk.StringVar(value="自动选择")
+            controls["model_menu"] = ctk.CTkOptionMenu(parent, values=["自动选择"], variable=controls["model_var"], width=250)
+            controls["mirror_var"] = ctk.StringVar(value="auto")
+            controls["mirror_menu"] = ctk.CTkOptionMenu(parent, values=['auto','cn','global','official','huggingface'], variable=controls["mirror_var"])
+            controls["quant_var"] = ctk.StringVar(value="无量化模型")
+            controls["quant_menu"] = ctk.CTkOptionMenu(parent, values=['无量化模型'], variable=controls["quant_var"])
+            controls["device_var"] = ctk.StringVar(value="CPU")
+            controls["device_menu"] = ctk.CTkOptionMenu(parent, values=['CPU','Auto','GPU - Intel'], variable=controls["device_var"])
+        else:
+            import tkinter as tk
+            controls["model_var"] = tk.StringVar(value="自动选择")
+            controls["model_menu"] = tk.OptionMenu(parent, controls["model_var"], "自动选择")
+            controls["mirror_var"] = tk.StringVar(value="auto")
+            controls["mirror_menu"] = tk.OptionMenu(parent, controls["mirror_var"], 'auto','cn','global','official','huggingface')
+            controls["quant_var"] = tk.StringVar(value="无量化模型")
+            controls["quant_menu"] = tk.OptionMenu(parent, controls["quant_var"], '无量化模型')
+            controls["device_var"] = tk.StringVar(value="CPU")
+            controls["device_menu"] = tk.OptionMenu(parent, controls["device_var"], 'CPU','Auto','GPU - Intel')
+    except Exception:
+        import tkinter as tk
+        controls["model_var"] = tk.StringVar(value="自动选择")
+        controls["model_menu"] = tk.OptionMenu(parent, controls["model_var"], "自动选择")
+        controls["mirror_var"] = tk.StringVar(value="auto")
+        controls["mirror_menu"] = tk.OptionMenu(parent, controls["mirror_var"], 'auto','cn','global','official','huggingface')
+        controls["quant_var"] = tk.StringVar(value="无量化模型")
+        controls["quant_menu"] = tk.OptionMenu(parent, controls["quant_var"], '无量化模型')
+        controls["device_var"] = tk.StringVar(value="CPU")
+        controls["device_menu"] = tk.OptionMenu(parent, controls["device_var"], 'CPU','Auto','GPU - Intel')
+    return controls
+def refresh_model_controls(controls: dict, list_models_func, hardware_detector=None):
+    """
+    刷新一组由 create_model_controls_ctk 创建的控件。
+    controls: dict 返回的控件集合（model_var, model_menu, mirror_var, mirror_menu, quant_var, quant_menu, device_var, device_menu）
+    list_models_func: callable() -> list of model dicts (每项含 id/display_name/versions 等)
+    hardware_detector: optional object with get_device_summary()
+    """
+    try:
+        models = list_models_func() or []
+    except Exception:
+        models = []
+
+    # model items
+    items = ["自动选择"] + [f"{m.get('display_name') or m.get('id')} ({m.get('id')})" for m in models]
+
+    # try to keep current selection
+    current = None
+    try:
+        mv = controls.get("model_var")
+        if mv is not None:
+            try:
+                current = mv.get()
+            except:
+                try:
+                    current = mv.get() if hasattr(mv, "get") else None
+                except:
+                    current = None
+    except:
+        current = None
+
+    # apply model menu values
+    mm = controls.get("model_menu")
+    try:
+        if mm is not None:
+            # customtkinter option menu exposes configure(values=...)
+            try:
+                mm.configure(values=items)
+                # restore selection if possible
+                if current in items:
+                    try:
+                        controls["model_var"].set(current)
+                    except:
+                        pass
+                else:
+                    try:
+                        controls["model_var"].set(items[0])
+                    except:
+                        pass
+            except Exception:
+                # fallback for tkinter OptionMenu: update the underlying menu
+                try:
+                    menu = mm["menu"]
+                    menu.delete(0, "end")
+                    for it in items:
+                        menu.add_command(label=it, command=lambda v=it: controls["model_var"].set(v))
+                    try:
+                        if current in items:
+                            controls["model_var"].set(current)
+                        else:
+                            controls["model_var"].set(items[0])
+                    except:
+                        pass
+                except Exception:
+                    pass
+    except:
+        pass
+
+    # mirror options fixed
+    mirror_values = ['auto', 'cn', 'global', 'official', 'huggingface']
+    mmenu = controls.get("mirror_menu")
+    try:
+        if mmenu is not None:
+            try:
+                mmenu.configure(values=mirror_values)
+            except Exception:
+                try:
+                    menu = mmenu["menu"]
+                    menu.delete(0, "end")
+                    for it in mirror_values:
+                        menu.add_command(label=it, command=lambda v=it: controls["mirror_var"].set(v))
+                except:
+                    pass
+    except:
+        pass
+
+    # quantized options: try to extract from selected model if possible
+    quant_items = ["无量化模型"]
+    try:
+        sel = None
+        try:
+            sel = controls.get("model_var").get()
+        except:
+            sel = None
+        if sel and sel != "自动选择":
+            # extract id inside parentheses
+            try:
+                model_id = sel.split('(')[-1].strip(')')
+                for m in models:
+                    if m.get("id") == model_id or m.get("display_name") == sel.split('(')[0].strip():
+                        vers = m.get("versions", []) or []
+                        if vers:
+                            qlist = vers[-1].get("quantized", []) or []
+                            if qlist:
+                                quant_items = ["无量化模型"] + [q.get("name") or q.get("filename") for q in qlist]
+                        break
+            except:
+                pass
+    except:
+        pass
+
+    qmenu = controls.get("quant_menu")
+    try:
+        if qmenu is not None:
+            try:
+                qmenu.configure(values=quant_items)
+            except Exception:
+                try:
+                    menu = qmenu["menu"]
+                    menu.delete(0, "end")
+                    for it in quant_items:
+                        menu.add_command(label=it, command=lambda v=it: controls["quant_var"].set(v))
+                except:
+                    pass
+    except:
+        pass
+
+    # device options - detect GPUs if hardware_detector provided
+    devs = ['CPU', 'Auto']
+    try:
+        if hardware_detector:
+            try:
+                summary = hardware_detector.get_device_summary() or {}
+            except:
+                summary = {}
+            gpus = summary.get('gpu', []) if isinstance(summary.get('gpu', []), list) else []
+            seen = set()
+            for g in gpus:
+                brand = (g.get('brand') if isinstance(g, dict) else str(g)) or ""
+                b_lower = brand.lower()
+                if 'nvidia' in b_lower:
+                    label = 'GPU - Nvidia'
+                elif 'amd' in b_lower or 'radeon' in b_lower:
+                    label = 'GPU - AMD'
+                elif 'intel' in b_lower:
+                    label = 'GPU - Intel'
+                else:
+                    label = f"GPU - {brand.split()[0]}" if brand else None
+                if label and label not in seen:
+                    devs.insert(0, label)
+                    seen.add(label)
+    except:
+        pass
+
+    dmenu = controls.get("device_menu")
+    try:
+        if dmenu is not None:
+            try:
+                dmenu.configure(values=devs)
+            except Exception:
+                try:
+                    menu = dmenu["menu"]
+                    menu.delete(0, "end")
+                    for it in devs:
+                        menu.add_command(label=it, command=lambda v=it: controls["device_var"].set(v))
+                except:
+                    pass
+    except:
+        pass

@@ -51,3 +51,18 @@ if %errorlevel% neq 0 (
     echo.
     echo ✓ 程序已正常退出
 )
+:start_app
+echo.
+echo [3/3] 启动VisionDeploy Studio...
+rem Delegate to launch_studio.py which prefers CTk frontend when available
+python launch_studio.py
+
+if %errorlevel% neq 0 (
+    echo.
+    echo ✗ 启动失败，请检查错误信息
+    echo 错误代码: %errorlevel%
+    pause
+) else (
+    echo.
+    echo ✓ 程序已正常退出
+)

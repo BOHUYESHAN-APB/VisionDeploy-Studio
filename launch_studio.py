@@ -10,130 +10,100 @@ import locale
 from pathlib import Path
 
 def check_dependencies():
-    """检查所需依赖"""
+    """检查并按需安装所需依赖（按模块导入检测，按需 pip 安装）"""
+    # 映射：pip 包名 -> 导入检测函数/模块名
+    checks = {
+        "dearpygui": ("dearpygui.dearpygui", None),
+        "psutil": ("psutil", None),
+        "requests": ("requests", None),
+        "Pillow": ("PIL", "Pillow"),
+        "gputil": ("GPUtil", None),
+        "PyYAML": ("yaml", "pyyaml"),
+        "pynvml": ("pynvml", None),
+    }
+    # Windows 特有建议包
     try:
-        import dearpygui.dearpygui as dpg
-        print("✅ DearPyGUI 已安装")
-        return True
-    except ImportError:
-        print("❌ DearPyGUI 未安装")
-        print("正在安装所需依赖...")
-        
+        if os.name == 'nt':
+            checks["wmi"] = ("wmi", None)
+    except Exception:
+        pass
+
+    missing = []
+    for pkg, (module_name, alt_name) in checks.items():
         try:
-            import subprocess
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", 
-                "dearpygui", "psutil", "requests", "Pillow"
-            ])
-            print("✅ 依赖安装完成")
-            return True
-        except Exception as e:
-            print(f"❌ 依赖安装失败: {e}")
-            return False
+            __import__(module_name)
+        except Exception:
+            # 有些包在 pip 名称和 import 名不同，优先记录 pip 包名 if provided
+            if alt_name:
+                missing.append(alt_name)
+            else:
+                missing.append(pkg)
+
+    if not missing:
+        print("✅ 所需依赖已安装")
+        return True
+
+    print(f"⚠️ 检测到缺失依赖: {', '.join(missing)}")
+    print("正在尝试通过 pip 安装缺失依赖...")
+
+    try:
+        import subprocess
+        # 使用 --upgrade 保证获取最新兼容版本
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade"] + missing
+        print("执行命令:", " ".join(cmd))
+        subprocess.check_call(cmd)
+    except Exception as e:
+        print(f"❌ 自动安装依赖失败: {e}")
+        return False
+
+    # 再次验证导入
+    failed_after_install = []
+    for pkg, (module_name, alt_name) in checks.items():
+        try:
+            __import__(module_name)
+        except Exception:
+            failed_after_install.append(pkg if not alt_name else alt_name)
+
+    if failed_after_install:
+        print(f"❌ 以下依赖仍不可用: {', '.join(failed_after_install)}")
+        print("请手动安装: python -m pip install " + " ".join(failed_after_install))
+        return False
+
+    print("✅ 依赖安装并验证通过")
+    return True
+
 
 def setup_environment():
-    """设置运行环境"""
-    # 设置系统编码以支持中文
-    try:
-        # 设置控制台编码为UTF-8
-        if hasattr(sys.stdout, 'reconfigure') and callable(getattr(sys.stdout, 'reconfigure', None)):
-            if sys.stdout.encoding != 'utf-8':
-                sys.stdout.reconfigure(encoding='utf-8')
-        if hasattr(sys.stderr, 'reconfigure') and callable(getattr(sys.stderr, 'reconfigure', None)):
-            if sys.stderr.encoding != 'utf-8':
-                sys.stderr.reconfigure(encoding='utf-8')
-    except:
-        pass
-    
-    # 设置系统区域以支持中文
-    try:
-        locale.setlocale(locale.LC_ALL, 'zh_CN.UTF-8')
-    except:
-        try:
-            locale.setlocale(locale.LC_ALL, 'Chinese_China.936')
-        except:
-            pass
-    
+    """Set up minimal runtime environment (paths, resources).
+
+    Kept small to avoid heavy imports at module load time.
+    """
     print("=" * 50)
     print("🚀 VisionDeploy Studio - 环境准备")
     print("=" * 50)
-    
+
     # 添加项目路径
     project_root = Path(__file__).parent
     sys.path.insert(0, str(project_root))
-    
+
     # 检查资源目录
     resources_dir = project_root / "resources"
     resources_dir.mkdir(exist_ok=True)
-    
+
     print("✅ 环境设置完成")
 
 def load_chinese_fonts():
-    """加载中文字体"""
+    """Attempt to load Chinese fonts using the font initializer shim.
+
+    This avoids importing DearPyGui at module import time. The shim will
+    delegate to legacy code only when explicitly needed.
+    """
     try:
-        import dearpygui.dearpygui as dpg
-        project_root = Path(__file__).parent
-        
-        # 尝试创建DearPyGui上下文，如果已存在则忽略错误
-        try:
-            dpg.create_context()
-        except:
-            # 上下文可能已存在，忽略错误
-            pass
-        
-        # 定义字体文件优先级列表
-        font_files = [
-            "MiSans-Regular.otf",
-            "MiSans-Normal.otf",
-            "MiSans-Medium.otf",
-            "MiSans-Semibold.otf",
-            "MiSans-Bold.otf",
-            "MiSans-Demibold.otf",
-            "MiSans-Light.otf",
-            "MiSans-ExtraLight.otf",
-            "MiSans-Thin.otf",
-            "MiSans-Heavy.otf"
-        ]
-        
-        # 查找可用的字体文件
-        font_path = None
-        for font_file in font_files:
-            path = project_root / "resources" / "fonts" / font_file
-            if path.exists():
-                font_path = str(path)
-                break
-        
-        # 如果找到字体文件，则加载
-        if font_path:
-            # 确保字体注册表已创建
-            try:
-                if not dpg.does_item_exist("font_registry"):
-                    with dpg.font_registry(tag="font_registry"):
-                        pass
-            except:
-                # 如果字体注册表已存在或出现其他错误，忽略
-                pass
-            
-            try:
-                with dpg.font_registry():
-                    # 先移除已存在的字体
-                    if dpg.does_item_exist("default_font"):
-                        dpg.delete_item("default_font")
-                    
-                    # 添加新字体
-                    default_font = dpg.add_font(font_path, 18, tag="default_font")
-                    dpg.bind_font(default_font)
-                
-                print(f"✅ 成功加载中文字体: {font_path}")
-                return True
-            except Exception as e:
-                print(f"⚠️ 字体加载时出错: {e}")
-                return False
-        else:
-            print("⚠️ 未找到可用的中文字体文件")
-            return False
+        # Use the shim which will call the legacy initializer on demand
+        from app.font_initializer import initialize_chinese_font
+        return initialize_chinese_font()
     except Exception as e:
-        print(f"⚠️ 加载中文字体失败: {e}")
+        print(f"⚠️ 加载中文字体失败（已降级）：{e}")
         return False
 
 def main():
@@ -148,29 +118,87 @@ def main():
     # 加载中文字体
     load_chinese_fonts()
     
+    # 确保 requests 可用（若缺失，优先自动安装以支持模型下载）
+    try:
+        import requests  # type: ignore
+    except Exception:
+        print("requests 未安装，尝试自动安装 requests...")
+        try:
+            import subprocess
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "requests"])
+            try:
+                import importlib
+                if 'requests' in sys.modules:
+                    importlib.reload(sys.modules['requests'])
+                else:
+                    __import__('requests')
+                print("requests 安装完成")
+            except Exception:
+                # 即使 reload 失败，后续的 check_dependencies 会再次验证
+                pass
+        except Exception as e:
+            print(f"自动安装 requests 失败: {e}")
+            print("将继续执行全依赖检查，可能需要手动安装 requests")
+    
     # 检查依赖
     if not check_dependencies():
         print("\n❌ 请手动安装依赖: pip install dearpygui psutil requests Pillow")
         input("按回车键退出...")
         return
     
-    # 启动应用程序
+    # 启动应用程序 — 优先使用 CustomTkinter 原型，其次尝试 PySide6，再回退到原有 MainApplication
     try:
         # 修复导入问题
         project_root = Path(__file__).parent
         sys.path.insert(0, str(project_root))
         
-        # 确保使用正确的导入路径
-        if 'app' not in sys.modules:
-            import app
-        
-        from app.main_application import MainApplication
-        print("\n✅ 启动 VisionDeploy Studio...")
-        
-        # 创建并运行主应用程序
-        app = MainApplication()
-        app.run()
-        
+        # 优先使用 customtkinter 前端（若已安装）
+        try:
+            import importlib
+            has_ctk = False
+            try:
+                import customtkinter  # type: ignore
+                has_ctk = True
+            except Exception:
+                has_ctk = False
+
+            if has_ctk:
+                try:
+                    from app.gui_ctk import run_app as run_ctk_app
+                    print("\n✅ 检测到 customtkinter，启动 CTk 前端...")
+                    run_ctk_app()
+                    sys.exit(0)
+                except Exception as e:
+                    print(f"启动 CTk 前端失败，回退：{e}")
+
+            # 若未安装 CTk，尝试 PySide6 前端
+            try:
+                import PySide6  # type: ignore
+                try:
+                    from app.gui_pyside import run_app as run_pyside_app
+                    print("\n✅ 检测到 PySide6，启动 PySide6 前端...")
+                    run_pyside_app()
+                    sys.exit(0)
+                except Exception as e:
+                    print(f"启动 PySide6 前端失败，回退：{e}")
+            except Exception:
+                # PySide6 不可用，继续回退
+                pass
+
+        except Exception as e:
+            print(f"前端探测失败: {e}")
+
+        # 最后回退到主应用（原有 DearPyGui 实现）
+        try:
+            if 'app' not in sys.modules:
+                import app
+            from app.main_application import MainApplication
+            print("\n✅ 启动 VisionDeploy Studio (主应用)...")
+            app = MainApplication()
+            app.run()
+        except Exception as e:
+            raise
+
     except Exception as e:
         print(f"❌ 启动失败: {e}")
         import traceback

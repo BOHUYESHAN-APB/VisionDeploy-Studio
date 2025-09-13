@@ -1,0 +1,25 @@
+Suggested removals and manual-review list
+
+Auto-archived (copied to temp/TeMP/test):
+- temp/test_font_init.py
+- temp/test_import_gui_ctk.py
+- temp/TMP/test_ui_scaling.py
+- temp/TMP/test_ui.py
+- temp/TMP/test_simple.py
+- temp/TMP/test_gui_full.py
+- temp/TMP/test_gui.py
+- temp/TMP/test_font_scaling.py
+- temp/TMP/test_final.py
+- temp/TMP/test_core.py
+
+Manual review recommended (do not delete automatically):
+- temp/tests/test_core.py (project-level tests) — consider moving to tests/ and add CI
+- temp/tests/test_final.py
+- temp/tests/test_gui_full.py
+- temp/tests/test_gui.py
+- temp/tests/test_simple.py
+- temp/tests/test_ui.py
+
+Notes:
+- Files listed under Manual review are likely project-level tests. Move them to `tests/` if you want CI coverage, or archive to `legacy_dearpygui/` if they're DearPyGui specific.
+- Do not delete originals until you confirm and/or create a backup branch.

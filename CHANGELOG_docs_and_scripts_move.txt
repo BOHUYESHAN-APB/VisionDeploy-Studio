@@ -1,0 +1,37 @@
+Docs and scripts consolidation - Change log
+
+Files created/copied:
+
+- DOCS/INDEX.md (index of centralized docs)
+- DOCS/README.md (copy)
+- DOCS/DESIGN_PRD.md (copy)
+- DOCS/UI_SPEC.md (copy)
+- DOCS/ARCHITECTURE.md (copy)
+- DOCS/ROADMAP.md (copy)
+
+- temp/TeMP/test/test_ui_scaling.py (archived test copy, not committed)
+- temp/TeMP/test/test_font_scaling.py (archived test copy, not committed)
+- temp/TeMP/test/test_font_display.py (archived test copy, not committed)
+- temp/TeMP/test/test_import_gui_ctk.py (archived import test copy, not committed)
+
+- scripts/README.md (notes for script copies)
+- scripts/install_dependencies.py (safe copy)
+- scripts/launch_studio.py (safe copy)
+- scripts/launcher.bat (safe copy)
+- scripts/requirements.txt (safe copy)
+
+Files modified:
+
+- .gitignore — added `temp/TeMP/` to ignore developer archives
+- README.md — added pointer to `DOCS/` index
+
+Notes / next actions:
+
+- The `temp/TeMP/` directory is intentionally ignored by Git. These are developer-only archives.
+- `scripts/` contains safe copies for convenience; do not change runtime imports to point to `scripts/` copies.
+- Please confirm whether you want the original root files removed or retained; recommended: retain originals to avoid breaking existing workflows.
+
+To validate locally:
+
+1. Open `DOCS/INDEX.md` to review centralized docs.
+2. Run the import test: python temp/test_import_gui_ctk.py

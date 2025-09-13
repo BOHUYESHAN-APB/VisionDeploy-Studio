@@ -107,101 +107,39 @@ def start_application():
     current_project_root = Path(__file__).parent
     
     try:
-        # 检查是否安装了DearPyGui
+        # 优先使用 CTk 前端（app.gui_ctk.MainApp），若不可用再回退到 legacy DearPyGui 实现
+        sys.path.insert(0, str(current_project_root))
         try:
-            import dearpygui.dearpygui as dpg
-        except ImportError:
-            print("❌ 未安装DearPyGui，正在安装...")
-            import subprocess
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "dearpygui"])
-            import dearpygui.dearpygui as dpg
-            print("✅ DearPyGui安装完成")
-        
-        # 在启动GUI之前加载中文字体
-        try:
-            # 确保DearPyGui上下文已创建
+            from app.gui_ctk import MainApp as CTkMainApp
+        except Exception:
+            CTkMainApp = None
+
+        if CTkMainApp:
+            print("启动 CTk 前端...")
+            app = CTkMainApp()
             try:
-                dpg.create_context()
-            except:
-                # 上下文可能已存在，忽略错误
-                pass
-            
-            # 加载中文字体
-            font_files = [
-                "MiSans-Regular.otf",
-                "MiSans-Normal.otf",
-                "MiSans-Medium.otf",
-                "MiSans-Semibold.otf",
-                "MiSans-Bold.otf",
-                "MiSans-Demibold.otf",
-                "MiSans-Light.otf",
-                "MiSans-ExtraLight.otf",
-                "MiSans-Thin.otf",
-                "MiSans-Heavy.otf"
-            ]
-            
-            font_path = None
-            for font_file in font_files:
-                path = current_project_root / "resources" / "fonts" / font_file
-                if path.exists():
-                    font_path = str(path)
-                    break
-            
-            if font_path:
-                # 确保字体注册表已创建
-                try:
-                    if not dpg.does_item_exist("font_registry"):
-                        with dpg.font_registry(tag="font_registry"):
+                app.setup()
+                if hasattr(app, 'run') and callable(app.run):
+                    app.run()
+                else:
+                    root = getattr(app, 'root', None)
+                    if root is not None:
+                        try:
+                            root.mainloop()
+                        except Exception:
                             pass
-                except:
-                    # 如果字体注册表已存在或出现其他错误，忽略
-                    pass
-                
-                try:
-                    with dpg.font_registry():
-                        # 先移除已存在的字体
-                        if dpg.does_item_exist("default_font"):
-                            dpg.delete_item("default_font")
-                        
-                        # 添加新字体并包含中文字体范围
-                        default_font = dpg.add_font(font_path, 18, tag="default_font")
-                        # 添加常用的中文字体范围
-                        dpg.add_font_range_hint(dpg.mvFontRangeHint_Chinese_Simplified_Common, parent=default_font)
-                        dpg.add_font_range_hint(dpg.mvFontRangeHint_Chinese_Full, parent=default_font)
-                        # 添加一些额外的字符范围
-                        dpg.add_font_range(0x4e00, 0x9fff, parent=default_font)  # CJK统一汉字区块
-                    
-                    dpg.bind_font("default_font")
-                    print(f"✅ 成功加载中文字体: {font_path}")
-                except Exception as e:
-                    print(f"⚠️ 字体加载时出错: {e}")
-                    # 尝试不带字体范围的加载方式
-                    try:
-                        with dpg.font_registry():
-                            if dpg.does_item_exist("default_font"):
-                                dpg.delete_item("default_font")
-                            
-                            default_font = dpg.add_font(font_path, 18, tag="default_font")
-                            dpg.bind_font(default_font)
-                        
-                        print(f"✅ 成功加载中文字体（简化方式）: {font_path}")
-                    except Exception as e2:
-                        print(f"⚠️ 简化字体加载也失败: {e2}")
-        except Exception as e:
-            print(f"⚠️ 加载中文字体时出错: {e}")
-        
-        # 启动GUI应用
-        try:
-            # 修复相对导入问题
-            sys.path.insert(0, str(current_project_root))
-            from app.gui_application import YOLODeployApp
-        except ImportError:
-            # 添加项目根目录到Python路径
-            sys.path.insert(0, str(current_project_root))
-            from app.gui_application import YOLODeployApp
-        
-        app = YOLODeployApp()
-        app.run()
+            except Exception:
+                raise
+        else:
+            # 回退：使用被归档的 DearPyGui 前端（仅在无法使用 CTk 时）
+            print("CTk 前端不可用，回退到 legacy DearPyGui 前端")
+            try:
+                from app.gui_application import YOLODeployApp
+            except Exception:
+                # 直接抛出给上层处理
+                raise
+            app = YOLODeployApp()
+            app.run()
         
     except Exception as e:
         print(f"❌ 应用程序启动失败: {e}")

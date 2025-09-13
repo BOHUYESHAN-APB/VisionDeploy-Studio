@@ -143,6 +143,20 @@ def main():
     print("您现在可以运行: python main.py")
     print("或直接运行: run.bat")
     print()
+
+    # 小提示：若已安装 customtkinter，建议使用 CTk 前端（launch_studio.py 会优先尝试）
+    try:
+        project_root = Path(__file__).parent
+        sys.path.insert(0, str(project_root))
+        try:
+            import customtkinter  # type: ignore
+            from app.gui_ctk import run_app as run_ctk_app
+            print("检测到 customtkinter，您可以直接使用 CTk 前端")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
     input("按回车键退出...")
 
 if __name__ == "__main__":
