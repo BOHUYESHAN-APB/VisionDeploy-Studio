@@ -1,107 +1,147 @@
-# VisionDeploy Studio 项目完成报告
+# VisionDeploy Studio - YOLO本地部署助手
 
-## 项目概述
+> 文档已集中到 `DOCS/` 目录，首选阅读 `DOCS/INDEX.md` 以获取项目概览与规范。
 
-VisionDeploy Studio 是一个集成的视觉模型部署工具，旨在为用户提供简单易用的界面来浏览、下载和管理机器学习模型。本项目已成功完成所有核心功能的开发和测试。
 
-## 完成的功能模块
+一个专为计算机视觉模型设计的本地部署工具，支持多种硬件加速和模型格式。
 
-### 1. HuggingFace 模型浏览器
-- **模型搜索**: 支持通过关键词搜索 HuggingFace 上的模型
-- **国内镜像支持**: 集成 hf-mirror.com 镜像以提高国内访问速度
-- **模型元数据获取**: 获取模型的详细信息和描述
-- **文件列表获取**: 获取模型包含的文件列表
-- **README 获取**: 获取模型的说明文档
-- **模型下载**: 支持从 HuggingFace 或镜像下载模型文件
+## 功能特性
 
-### 2. 内置模型管理器
-- **模型数据库**: 管理本地预置的模型
-- **模型条目管理**: 获取和管理模型的详细信息
-- **版本控制**: 支持模型的多个版本管理
-- **下载管理**: 管理模型的下载和存储
+### 🚀 核心功能
+- **多硬件支持**: Intel XPU, NVIDIA CUDA, AMD ROCM
+- **模型管理**: YOLO系列模型下载、管理和部署
+- **实时推理**: 摄像头实时检测和图片批量处理
+- **性能监控**: CPU/GPU/内存使用率实时显示
+- **按需环境**: 仅在需要时安装模型环境，节省存储空间
 
-### 3. 硬件检测系统
-- **快速检测**: 避免长时间等待的硬件检测机制
-- **GPU 检测**: 支持 NVIDIA、AMD、Intel GPU 检测
-- **CPU 信息**: 检测 CPU 核心数和架构信息
-- **推荐系统**: 根据硬件配置推荐最佳计算后端
+### 🌍 多语言支持
+- 简体中文 (zh_CN)
+- 英文 (en_US)
+- 自动检测系统语言环境
 
-### 4. 用户界面
-- **CustomTkinter 界面**: 现代化的 GUI 界面
-- **模型列表显示**: 清晰展示内置和 HF 模型
-- **搜索功能**: 集成 HF 模型搜索
-- **镜像选择**: 支持多种镜像选项
-- **设备选择**: 根据硬件检测结果选择计算设备
-- **缩放功能**: 支持界面缩放
-- **进度显示**: 实时显示下载进度
+### 🛠️ 技术特性
+- 自动硬件检测和配置优化
+- 按需Python虚拟环境管理
+- 网络环境自适应（国内/国外镜像）
+- 跨平台支持 (Windows/Linux/macOS)
 
-## 技术实现
+## 快速开始
 
-### 核心文件
-1. **app/hf_browser.py** - HuggingFace 浏览器模块
-2. **app/model_manager.py** - 模型管理器模块
-3. **core/hardware_detector_simple.py** - 简化版硬件检测器
-4. **app/gui_ctk.py** - GUI 界面模块
-5. **main.py** - 主应用程序入口
+### Windows用户
+1. 双击 `run.bat` 启动程序
+2. 或右键选择 `run.ps1` 使用PowerShell运行
 
-### 关键优化
-- **SSL 证书问题处理**: 通过 `verify=False` 解决证书验证问题
-- **网络超时控制**: 设置合理的超时时间避免卡顿
-- **镜像兼容性**: 改进请求头以提高镜像兼容性
-- **线程安全**: 确保 GUI 在多线程环境下的稳定性
-
-### 测试文件
-创建了完整的测试套件确保功能稳定性：
-1. **temp/test_hf_browser_integration.py** - HF 浏览器集成功能测试
-2. **temp/test_model_download_with_progress.py** - 模型下载进度测试
-3. **temp/test_gui_functionality.py** - GUI 功能测试
-4. **temp/final_integration_test.py** - 最终集成测试
-5. **temp/quick_functionality_check.py** - 快速功能验证
-
-## 项目验证结果
-
-### 功能测试
-- ✅ 所有核心模块正常工作
-- ✅ HF 浏览器功能完整，支持国际和国内镜像
-- ✅ 模型管理器功能完善
-- ✅ 硬件检测快速准确
-- ✅ GUI 界面友好易用
-
-### 性能测试
-- ✅ 应用程序启动快速（硬件检测优化）
-- ✅ 网络请求响应良好
-- ✅ 多线程操作稳定
-
-### 集成测试
-- ✅ 所有测试用例通过
-- ✅ 模块间集成无问题
-- ✅ 错误处理机制有效
-
-## 使用方法
-
-### 启动应用程序
+### Linux/macOS用户
 ```bash
-python main.py
+chmod +x run.sh
+./run.sh
 ```
 
-### 运行测试
+### 命令行启动
 ```bash
-# 运行快速功能验证
-python temp/quick_functionality_check.py
+# 使用中文界面
+python app/main.py --language zh_CN
 
-# 运行最终集成测试
-python temp/final_integration_test.py
+# 使用英文界面  
+python app/main.py --language en_US
+
+# 自动检测语言
+python app/main.py
 ```
 
-## 项目总结
+## 硬件要求
 
-VisionDeploy Studio 已成功实现了所有计划功能，包括 HuggingFace 模型浏览、本地模型管理、硬件检测和友好的用户界面。通过完整的测试套件验证，所有功能均能正常工作。
+### 最低配置
+- CPU: 支持AVX指令集的x86_64处理器
+- 内存: 4GB RAM
+- 存储: 2GB可用空间
+- 系统: Windows 10/11, Ubuntu 18.04+, macOS 10.15+
 
-项目具有以下优势：
-1. **功能完整**: 涵盖了模型浏览、下载、管理的全流程
-2. **国内优化**: 针对国内网络环境优化了镜像支持
-3. **用户体验**: 提供了直观易用的图形界面
-4. **稳定性**: 通过全面的测试确保了程序稳定性
-5. **扩展性**: 模块化设计便于后续功能扩展
+### 推荐配置
+- CPU: 8核以上处理器
+- 内存: 16GB RAM
+- GPU: NVIDIA GTX 1060 6GB+ / AMD RX 580 8GB+
+- 存储: 10GB SSD空间
 
-项目已达到预期目标，可以投入实际使用。
+## 支持模型
+
+### YOLO系列
+- YOLOv5, YOLOv6, YOLOv7, YOLOv8
+- PP-YOLO, YOLOX
+- 自定义训练的YOLO模型
+
+### 模型格式
+- PyTorch (.pt)
+- ONNX (.onnx) 
+- TensorRT (.engine)
+- OpenVINO (.xml)
+
+## 按需环境管理
+
+### 工作原理
+VisionDeploy Studio采用按需环境管理策略：
+1. **初始安装**: 仅安装基础依赖，不预装大型深度学习框架
+2. **环境准备**: 当用户选择特定模型环境时，动态创建虚拟环境并安装所需依赖
+3. **资源优化**: 避免预装多个大型框架，节省磁盘空间和安装时间
+
+### 可用环境
+- **yolov5-cuda**: YOLOv5 + CUDA支持 (NVIDIA GPU)
+- **yolov8-cuda**: YOLOv8 + CUDA支持 (NVIDIA GPU)
+- **ppyolo-xpu**: PP-YOLO + Intel XPU支持 (Intel处理器)
+
+### 环境准备流程
+1. 在GUI中选择目标模型环境
+2. 点击"准备选中环境"按钮
+3. 系统自动下载Python、创建虚拟环境、安装依赖
+4. 环境准备完成后即可进行模型推理
+
+## 目录结构
+
+```
+VisionDeploy-Studio/
+├── app/                 # 应用程序核心
+│   ├── main.py         # 主入口文件
+│   └── gui_application.py # GUI界面
+├── core/               # 核心模块
+│   ├── hardware_detector.py         # 硬件检测
+│   ├── on_demand_environment_manager.py  # 按需环境管理
+│   ├── model_manager.py             # 模型管理
+│   └── language_manager.py          # 语言管理
+├── resources/          # 资源文件
+│   ├── languages/     # 语言包
+│   └── fonts/         # 字体文件
+├── config/            # 配置文件
+├── run.bat           # Windows启动脚本
+├── run.ps1           # PowerShell启动脚本
+└── run.sh            # Linux/macOS启动脚本
+```
+
+## 常见问题
+
+### Q: 检测不到NVIDIA显卡？
+A: 请安装NVIDIA驱动和CUDA工具包
+
+### Q: 程序启动失败？
+A: 检查Python版本（需要3.8+）和依赖安装
+
+### Q: 如何添加新的语言支持？
+A: 在 `resources/languages/` 目录下创建新的语言文件
+
+### Q: 环境准备失败怎么办？
+A: 检查网络连接，或手动运行 `python install_dependencies.py` 安装依赖
+
+## 开发计划
+
+- [ ] 华为NPU支持
+- [ ] 摩尔线程MUSA SDK支持  
+- [ ] 更多CNN模型支持
+- [ ] 模型训练功能
+- [ ] 云端同步功能
+
+## 许可证
+
+MIT License - 详见 LICENSE 文件
+
+## 技术支持
+
+如有问题请提交Issue或联系开发团队。

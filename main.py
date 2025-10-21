@@ -44,10 +44,8 @@ def setup_environment():
     try:
         # 尝试导入核心模块
         try:
-            # 使用简化版硬件检测器
-            from core.hardware_detector_simple import HardwareDetector
             from core.on_demand_environment_manager import OnDemandEnvironmentManager
-            hardware_detector = HardwareDetector()
+            from core.hardware_detector import hardware_detector
             environment_manager = OnDemandEnvironmentManager(str(project_root))
         except ImportError as e:
             print(f"❌ 核心模块导入失败: {e}")
@@ -62,6 +60,7 @@ def setup_environment():
         
         # 检测硬件
         print("🔍 检测硬件配置...")
+        # 修复：使用正确的方法名
         try:
             hardware_info = hardware_detector.detect_all_hardware()
             recommended_backend = hardware_detector.get_recommended_backend()
@@ -70,8 +69,8 @@ def setup_environment():
             print(f"   NVIDIA GPU: {'✅' if hardware_info['nvidia_gpu'] else '❌'}")
             print(f"   AMD GPU: {'✅' if hardware_info['amd_gpu'] else '❌'}")
             print(f"   Intel GPU: {'✅' if hardware_info['intel_gpu'] else '❌'}")
-            print(f"   CPU核心数: {hardware_info['cpu_cores']}")
-            print(f"   系统架构: {hardware_info['architecture']}")
+            print(f"   Intel AI能力: {'✅' if hardware_info['intel_ai_capable'] else '❌'}")
+            print(f"   CUDA可用: {'✅' if hardware_info['cuda_available'] else '❌'}")
             print(f"   推荐后端: {recommended_backend.upper()}")
             print(f"   推荐环境: {recommended_env}")
         except Exception as e:
