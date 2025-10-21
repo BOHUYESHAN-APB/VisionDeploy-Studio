@@ -1,0 +1,5 @@
+Found 1 HTML files in temp\hf_raw_responses
+--- example_warning.html ---
+Title: Mirror Warning
+Contains warning-like text: True
+Excerpt: Mirror Warning 警告 该镜像暂时不可用，请访问官方站点。

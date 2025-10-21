@@ -58,8 +58,6 @@ except Exception:
     initialize_chinese_font_debug = None
     rebind_default_font = None
 
-# ...existing code...
-
 # 尝试导入按需环境管理器（容错）
 try:
     from core.on_demand_environment_manager import OnDemandEnvironmentManager
@@ -77,10 +75,16 @@ except Exception:
 # 尝试导入 GUI <-> 处理器 辅助函数（兼容 app/handlers）
 try:
     from app.handlers.model_handlers import load_model_device_map, save_model_device_map, get_quantized_options_for_model
+    from app import hf_browser
 except Exception:
     load_model_device_map = None
     save_model_device_map = None
     get_quantized_options_for_model = None
+    try:
+        # best-effort import hf_browser even if other handlers fail
+        from app import hf_browser
+    except Exception:
+        hf_browser = None
 
 
 # Helper: resolve the user-visible mirror choice to a backend mirror param/URL
@@ -413,8 +417,19 @@ class ModelManagerDialog(ctk.CTkToplevel if ctk else tk.Toplevel):
 
 
 class MainApp:
-    def __init__(self):
+    def __init__(self, start_context=None):
+        # start_context: optional dict passed from launcher (project_root, resources_dir, mirror)
         self.root = None
+        # load persisted prefs and merge with start_context (start_context overrides saved prefs)
+        try:
+            from app.ui_prefs import load_prefs
+            saved = load_prefs() or {}
+        except Exception:
+            saved = {}
+        self.start_context = {}
+        self.start_context.update(saved)
+        if isinstance(start_context, dict):
+            self.start_context.update(start_context)
 
     # --- 小型 UI helper，统一处理 CTk vs Tk 的 text/config 更新 ---
     def _safe_set(self, widget, text):
@@ -455,8 +470,33 @@ class MainApp:
 
     def setup(self):
         if ctk:
-            ctk.set_appearance_mode("System")
-            ctk.set_default_color_theme("blue")
+            # prefer user-configured theme from config.yaml when available
+            try:
+                import yaml as _yaml
+                cfg = None
+                try:
+                    with open(project_root.parent / 'config.yaml', 'r', encoding='utf-8') as _f:
+                        cfg = _yaml.safe_load(_f) or {}
+                except Exception:
+                    try:
+                        with open('config.yaml', 'r', encoding='utf-8') as _f:
+                            cfg = _yaml.safe_load(_f) or {}
+                    except Exception:
+                        cfg = {}
+                theme = cfg.get('theme', 'System')
+            except Exception:
+                theme = 'System'
+            try:
+                ctk.set_appearance_mode(theme)
+            except Exception:
+                try:
+                    ctk.set_appearance_mode('System')
+                except Exception:
+                    pass
+            try:
+                ctk.set_default_color_theme("blue")
+            except Exception:
+                pass
             self.root = ctk.CTk()
         else:
             self.root = tk.Tk()
@@ -468,7 +508,23 @@ class MainApp:
             self.env_manager = None
 
         self.root.title("VisionDeploy Studio - CTk")
-        self.root.geometry("1100x720")
+        # restore window geometry from prefs if present
+        try:
+            geom = None
+            if isinstance(self.start_context, dict):
+                geom = self.start_context.get('window_geometry')
+            if geom:
+                try:
+                    self.root.geometry(geom)
+                except:
+                    self.root.geometry("1100x720")
+            else:
+                self.root.geometry("1100x720")
+        except:
+            try:
+                self.root.geometry("1100x720")
+            except:
+                pass
 
         # Menubar: 文件/视图/帮助（兼容 ctk 与 tk）
         try:
@@ -480,6 +536,8 @@ class MainApp:
                 mb_file.pack(side="left", padx=4, pady=4)
                 mb_theme = ctk.CTkButton(menubar, text="切换主题", command=self._on_toggle_theme, width=120)
                 mb_theme.pack(side="left", padx=4, pady=4)
+                mb_settings = ctk.CTkButton(menubar, text="设置", command=self.open_settings_dialog, width=120)
+                mb_settings.pack(side="right", padx=4, pady=4)
                 mb_about = ctk.CTkButton(menubar, text="关于", command=lambda: messagebox.showinfo("关于","VisionDeploy Studio - CTk"), width=120)
                 mb_about.pack(side="right", padx=4, pady=4)
             else:
@@ -489,10 +547,21 @@ class MainApp:
                 mb_file.pack(side="left", padx=4, pady=4)
                 mb_theme = tk.Button(menubar, text="切换主题", command=self._on_toggle_theme, width=12)
                 mb_theme.pack(side="left", padx=4, pady=4)
+                mb_settings = tk.Button(menubar, text="设置", command=self.open_settings_dialog, width=12)
+                mb_settings.pack(side="right", padx=4, pady=4)
                 mb_about = tk.Button(menubar, text="关于", command=lambda: messagebox.showinfo("关于","VisionDeploy Studio - CTk"), width=12)
                 mb_about.pack(side="right", padx=4, pady=4)
-        except Exception:
-            pass
+        except Exception as e:
+            try:
+                import traceback
+                traceback.print_exc()
+            except:
+                pass
+            try:
+                if hasattr(self, 'status_label') and self.status_label is not None:
+                    self._safe_set(self.status_label, f"HF 浏览器打开失败: {e}")
+            except:
+                pass
 
         # Layout frames
         if ctk:
@@ -552,6 +621,14 @@ class MainApp:
             self.mirror_var = ctk.StringVar(value="auto")
             self.mirror_menu = ctk.CTkOptionMenu(left, values=['auto','cn','global','official','huggingface'], variable=self.mirror_var)
             self.mirror_menu.pack(padx=6, pady=4)
+            try:
+                # react to mirror changes immediately
+                self.mirror_var.trace_add("write", lambda *a: self._on_mirror_change())
+            except Exception:
+                try:
+                    self.mirror_var.trace("w", lambda *a: self._on_mirror_change())
+                except Exception:
+                    pass
 
             self.quant_var = ctk.StringVar(value="无量化模型")
             self.quant_menu = ctk.CTkOptionMenu(left, values=['无量化模型'], variable=self.quant_var)
@@ -566,11 +643,11 @@ class MainApp:
 
         # device combo
         if ctk:
-            self.device_var = ctk.StringVar(value="CPU")
+            self.device_var = ctk.StringVar(value=self.start_context.get('device','CPU'))
             self.device_menu = ctk.CTkOptionMenu(left, values=['CPU','Auto','GPU - Intel'], variable=self.device_var)
             self.device_menu.pack(padx=6, pady=4)
         else:
-            self.device_var = tk.StringVar(value="CPU")
+            self.device_var = tk.StringVar(value=self.start_context.get('device','CPU'))
             self.device_menu = tk.OptionMenu(left, self.device_var, 'CPU','Auto','GPU - Intel')
             self.device_menu.pack(padx=6, pady=4)
 
@@ -583,12 +660,28 @@ class MainApp:
                 self.zoom_menu.pack(padx=6, pady=6)
                 self.apply_zoom_btn = ctk.CTkButton(left, text="应用缩放", command=self._apply_zoom, width=120)
                 self.apply_zoom_btn.pack(padx=6, pady=4)
+                try:
+                    # auto-apply when zoom selection changes
+                    self.zoom_var.trace_add("write", lambda *a: self._on_zoom_change())
+                except Exception:
+                    try:
+                        self.zoom_var.trace("w", lambda *a: self._on_zoom_change())
+                    except Exception:
+                        pass
             else:
                 self.zoom_var = tk.StringVar(value='100%')
                 self.zoom_menu = tk.OptionMenu(left, self.zoom_var, *zoom_values)
                 self.zoom_menu.pack(padx=6, pady=6)
                 self.apply_zoom_btn = tk.Button(left, text="应用缩放", command=self._apply_zoom)
                 self.apply_zoom_btn.pack(padx=6, pady=4)
+                try:
+                    # tkinter trace (older API)
+                    try:
+                        self.zoom_var.trace_add("write", lambda *a: self._on_zoom_change())
+                    except Exception:
+                        self.zoom_var.trace("w", lambda *a: self._on_zoom_change())
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -596,6 +689,8 @@ class MainApp:
         if ctk:
             btn = ctk.CTkButton(left, text="模型管理", command=self.open_model_manager)
             btn.pack(padx=6, pady=8)
+            hf_btn = ctk.CTkButton(left, text="HF 浏览", command=self.open_hf_browser)
+            hf_btn.pack(padx=6, pady=4)
             prep_btn = ctk.CTkButton(left, text="准备环境", command=self._on_prepare_env)
             prep_btn.pack(padx=6, pady=4)
             self.reload_font_btn = ctk.CTkButton(left, text="重载字体", command=self._on_reload_fonts)
@@ -603,6 +698,8 @@ class MainApp:
         else:
             btn = tk.Button(left, text="模型管理", command=self.open_model_manager)
             btn.pack(padx=6, pady=8)
+            hf_btn = tk.Button(left, text="HF 浏览", command=self.open_hf_browser)
+            hf_btn.pack(padx=6, pady=4)
             prep_btn = tk.Button(left, text="准备环境", command=self._on_prepare_env)
             prep_btn.pack(padx=6, pady=4)
             self.reload_font_btn = tk.Button(left, text="重载字体", command=self._on_reload_fonts)
@@ -708,6 +805,19 @@ class MainApp:
             except:
                 pass
 
+        # 显示 context 信息到状态栏
+        try:
+            info = []
+            ctx = getattr(self, 'start_context', {})
+            if ctx.get('resources_dir'):
+                info.append(f"res:{Path(ctx['resources_dir']).name}")
+            if ctx.get('mirror'):
+                info.append(f"mirror:{ctx['mirror']}")
+            if info and hasattr(self, 'status_label') and self.status_label:
+                self._safe_set(self.status_label, self.status_label.cget('text') + ' | ' + ' | '.join(info))
+        except Exception:
+            pass
+
     def _on_toggle_theme(self):
         """Toggle CTk appearance mode (System -> Dark -> Light cycles)"""
         try:
@@ -721,6 +831,277 @@ class MainApp:
             except:
                 self.status_label.config(text=f"主题: {nxt}")
         except Exception:
+            pass
+
+    def open_settings_dialog(self):
+        try:
+            dlg = ctk.CTkToplevel(self.root) if ctk else tk.Toplevel(self.root)
+            dlg.title("设置")
+            dlg.geometry("420x220")
+
+            # mirror field
+            try:
+                lbl = ctk.CTkLabel(dlg, text="镜像选择:") if ctk else tk.Label(dlg, text="镜像选择:")
+                lbl.pack(padx=8, pady=(12,4), anchor="w")
+            except:
+                pass
+            mirror_val = getattr(self, 'mirror_var', None)
+            if mirror_val is None:
+                mirror_val = ctk.StringVar(value=self.start_context.get('mirror','auto')) if ctk else tk.StringVar(value=self.start_context.get('mirror','auto'))
+            try:
+                if ctk:
+                    menu = ctk.CTkOptionMenu(dlg, values=['auto','cn','global','official','huggingface'], variable=mirror_val)
+                    menu.pack(padx=8, pady=4, fill='x')
+                else:
+                    menu = tk.OptionMenu(dlg, mirror_val, 'auto','cn','global','official','huggingface')
+                    menu.pack(padx=8, pady=4, fill='x')
+            except Exception:
+                pass
+
+            # zoom field
+            try:
+                lbl2 = ctk.CTkLabel(dlg, text="缩放:") if ctk else tk.Label(dlg, text="缩放:")
+                lbl2.pack(padx=8, pady=(12,4), anchor="w")
+            except:
+                pass
+            zoom_val = getattr(self, 'zoom_var', None)
+            if zoom_val is None:
+                zoom_val = ctk.StringVar(value=self.start_context.get('zoom','100%')) if ctk else tk.StringVar(value=self.start_context.get('zoom','100%'))
+            try:
+                zoom_values = ['80%','90%','100%','110%','125%','150%']
+                if ctk:
+                    zm = ctk.CTkOptionMenu(dlg, values=zoom_values, variable=zoom_val)
+                    zm.pack(padx=8, pady=4, fill='x')
+                else:
+                    zm = tk.OptionMenu(dlg, zoom_val, *zoom_values)
+                    zm.pack(padx=8, pady=4, fill='x')
+            except Exception:
+                pass
+
+            # device field
+            try:
+                lbl3 = ctk.CTkLabel(dlg, text="默认设备:") if ctk else tk.Label(dlg, text="默认设备:")
+                lbl3.pack(padx=8, pady=(12,4), anchor="w")
+            except:
+                pass
+            device_val = getattr(self, 'device_var', None)
+            if device_val is None:
+                device_val = ctk.StringVar(value=self.start_context.get('device','CPU')) if ctk else tk.StringVar(value=self.start_context.get('device','CPU'))
+            try:
+                devs = ['CPU','Auto','GPU - Intel','GPU - Nvidia','GPU - AMD']
+                if ctk:
+                    dv = ctk.CTkOptionMenu(dlg, values=devs, variable=device_val)
+                    dv.pack(padx=8, pady=4, fill='x')
+                else:
+                    dv = tk.OptionMenu(dlg, device_val, *devs)
+                    dv.pack(padx=8, pady=4, fill='x')
+            except Exception:
+                pass
+
+            # window geometry
+            try:
+                lbl4 = ctk.CTkLabel(dlg, text="窗口大小 (WxH 或 geometry):") if ctk else tk.Label(dlg, text="窗口大小 (WxH 或 geometry):")
+                lbl4.pack(padx=8, pady=(12,4), anchor="w")
+            except:
+                pass
+            geom_var = tk.StringVar(value=self.start_context.get('window_geometry',''))
+            try:
+                if ctk:
+                    entry = ctk.CTkEntry(dlg, textvariable=geom_var)
+                    entry.pack(padx=8, pady=4, fill='x')
+                else:
+                    entry = tk.Entry(dlg, textvariable=geom_var)
+                    entry.pack(padx=8, pady=4, fill='x')
+            except Exception:
+                pass
+
+            # HF 镜像基址
+            try:
+                lbl5 = ctk.CTkLabel(dlg, text="HF 镜像基址 (可选):") if ctk else tk.Label(dlg, text="HF 镜像基址 (可选):")
+                lbl5.pack(padx=8, pady=(12,4), anchor='w')
+            except:
+                pass
+            hf_base_var = tk.StringVar(value=self.start_context.get('hf_api_base',''))
+            try:
+                if ctk:
+                    hf_entry = ctk.CTkEntry(dlg, textvariable=hf_base_var)
+                    hf_entry.pack(padx=8, pady=4, fill='x')
+                else:
+                    hf_entry = tk.Entry(dlg, textvariable=hf_base_var)
+                    hf_entry.pack(padx=8, pady=4, fill='x')
+            except:
+                pass
+
+            # 快速预设：使用推荐的中国镜像（包含 /api 路径）
+            try:
+                def use_recommended_mirror():
+                    try:
+                        hf_base_var.set('https://hf-mirror.com/api')
+                    except Exception:
+                        pass
+                if ctk:
+                    preset_btn = ctk.CTkButton(dlg, text="使用推荐中国镜像", command=use_recommended_mirror)
+                    preset_btn.pack(padx=8, pady=4, fill='x')
+                else:
+                    preset_btn = tk.Button(dlg, text="使用推荐中国镜像", command=use_recommended_mirror)
+                    preset_btn.pack(padx=8, pady=4, fill='x')
+            except Exception:
+                pass
+
+            def use_current_geometry():
+                try:
+                    geom = self.root.geometry() if hasattr(self, 'root') and self.root else None
+                    if geom:
+                        geom_var.set(geom)
+                except:
+                    pass
+            try:
+                if ctk:
+                    cur_geom_btn = ctk.CTkButton(dlg, text="使用当前窗口大小", command=use_current_geometry)
+                    cur_geom_btn.pack(padx=8, pady=4, fill='x')
+                else:
+                    cur_geom_btn = tk.Button(dlg, text="使用当前窗口大小", command=use_current_geometry)
+                    cur_geom_btn.pack(padx=8, pady=4, fill='x')
+            except Exception:
+                pass
+
+            def do_save():
+                try:
+                    m = mirror_val.get()
+                    z = zoom_val.get()
+                    d = device_val.get() if device_val is not None else self.start_context.get('device','CPU')
+                    wg = geom_var.get()
+                    try:
+                        if hasattr(self, 'mirror_var'):
+                            self._safe_set_var(self.mirror_var, m)
+                        else:
+                            self.start_context['mirror'] = m
+                        if hasattr(self, 'zoom_var'):
+                            self._safe_set_var(self.zoom_var, z)
+                        else:
+                            self.start_context['zoom'] = z
+                        try:
+                            if hasattr(self, 'device_var'):
+                                self._safe_set_var(self.device_var, d)
+                                if hasattr(self, 'device_label') and self.device_label:
+                                    self._safe_set(self.device_label, f"设备: {d}")
+                            else:
+                                self.start_context['device'] = d
+                        except:
+                            pass
+                        try:
+                            # persist HF api base if provided
+                            if hf_base_var and hf_base_var.get():
+                                self.start_context['hf_api_base'] = hf_base_var.get().strip()
+                            else:
+                                # remove if empty
+                                if 'hf_api_base' in self.start_context:
+                                    del self.start_context['hf_api_base']
+                        except:
+                            pass
+                        try:
+                            if wg:
+                                self.start_context['window_geometry'] = wg
+                                if hasattr(self, 'root') and self.root and wg:
+                                    try:
+                                        self.root.geometry(wg)
+                                    except:
+                                        pass
+                        except:
+                            pass
+                    except:
+                        pass
+                    try:
+                        from app.ui_prefs import save_prefs
+                        save_prefs(self.start_context)
+                    except:
+                        pass
+                    try:
+                        messagebox.showinfo('设置', '已保存')
+                    except:
+                        pass
+                except:
+                    pass
+
+            def do_restore():
+                try:
+                    if hasattr(self, 'mirror_var'):
+                        self._safe_set_var(self.mirror_var, 'auto')
+                    else:
+                        self.start_context['mirror'] = 'auto'
+                    if hasattr(self, 'zoom_var'):
+                        self._safe_set_var(self.zoom_var, '100%')
+                    else:
+                        self.start_context['zoom'] = '100%'
+                    try:
+                        from app.ui_prefs import save_prefs
+                        save_prefs(self.start_context)
+                    except:
+                        pass
+                except:
+                    pass
+
+            btn_frame = ctk.CTkFrame(dlg) if ctk else tk.Frame(dlg)
+            btn_frame.pack(padx=8, pady=12, fill='x')
+            if ctk:
+                sbtn = ctk.CTkButton(btn_frame, text='保存', command=do_save)
+                sbtn.pack(side='left', padx=6)
+                rbtn = ctk.CTkButton(btn_frame, text='恢复默认', command=do_restore)
+                rbtn.pack(side='left', padx=6)
+                cbtn = ctk.CTkButton(btn_frame, text='关闭', command=dlg.destroy)
+                cbtn.pack(side='right', padx=6)
+            else:
+                sbtn = tk.Button(btn_frame, text='保存', command=do_save)
+                sbtn.pack(side='left', padx=6)
+                rbtn = tk.Button(btn_frame, text='恢复默认', command=do_restore)
+                rbtn.pack(side='left', padx=6)
+                cbtn = tk.Button(btn_frame, text='关闭', command=dlg.destroy)
+                cbtn.pack(side='right', padx=6)
+        except Exception:
+            pass
+
+    def _on_mirror_change(self):
+        try:
+            val = self.mirror_var.get() if hasattr(self, 'mirror_var') else None
+            # update status and persist to start_context
+            if val:
+                try:
+                    self._safe_set(self.status_label, f"镜像: {val}")
+                except:
+                    try:
+                        self.status_label.config(text=f"镜像: {val}")
+                    except:
+                        pass
+                try:
+                    if isinstance(self.start_context, dict):
+                        self.start_context['mirror'] = val
+                        try:
+                            from app.ui_prefs import save_prefs
+                            save_prefs(self.start_context)
+                        except Exception:
+                            pass
+                except:
+                    pass
+        except:
+            pass
+
+    def _on_zoom_change(self):
+        try:
+            # apply zoom immediately
+            self._apply_zoom()
+            try:
+                cur = self.zoom_var.get() if hasattr(self, 'zoom_var') else '100%'
+                self._safe_set(self.status_label, f"缩放: {cur}")
+                try:
+                    if isinstance(self.start_context, dict):
+                        self.start_context['zoom'] = cur
+                        from app.ui_prefs import save_prefs
+                        save_prefs(self.start_context)
+                except Exception:
+                    pass
+            except:
+                pass
+        except:
             pass
 
     def _apply_zoom(self):
@@ -1081,7 +1462,631 @@ class MainApp:
                     self.status_label.config(text=message)
             except:
                 pass
-            return
+
+            # settings dialog moved to class-level open_settings_dialog
+            pass
+        
+    def open_hf_browser(self):
+        try:
+            dlg = ctk.CTkToplevel(self.root) if ctk else tk.Toplevel(self.root)
+            dlg.title("HuggingFace 浏览器")
+            dlg.geometry("720x480")
+
+            # search area
+            try:
+                if ctk:
+                    s_frame = ctk.CTkFrame(dlg)
+                    s_frame.pack(fill='x', padx=8, pady=8)
+                    query_var = ctk.StringVar(value='')
+                    s_entry = ctk.CTkEntry(s_frame, textvariable=query_var)
+                    s_entry.pack(side='left', expand=True, fill='x', padx=(0,8))
+                    s_btn = ctk.CTkButton(s_frame, text='搜索', command=lambda: do_search())
+                    s_btn.pack(side='right')
+                else:
+                    s_frame = tk.Frame(dlg)
+                    s_frame.pack(fill='x', padx=8, pady=8)
+                    query_var = tk.StringVar(value='')
+                    s_entry = tk.Entry(s_frame, textvariable=query_var)
+                    s_entry.pack(side='left', expand=True, fill='x', padx=(0,8))
+                    s_btn = tk.Button(s_frame, text='搜索', command=lambda: do_search())
+                    s_btn.pack(side='right')
+            except:
+                query_var = tk.StringVar(value='')
+
+            # layout: left=results, right=details+files
+            try:
+                main_frame = tk.Frame(dlg)
+                main_frame.pack(fill='both', expand=True, padx=8, pady=4)
+
+                results_frame = tk.Frame(main_frame)
+                results_frame.pack(side='left', fill='both', expand=True)
+                results_box = tk.Listbox(results_frame)
+                results_box.pack(side='left', fill='both', expand=True)
+                scrollbar = tk.Scrollbar(results_frame, command=results_box.yview)
+                scrollbar.pack(side='right', fill='y')
+                results_box.config(yscrollcommand=scrollbar.set)
+
+                # right pane for metadata and files
+                details_frame = tk.Frame(main_frame, width=380)
+                details_frame.pack(side='right', fill='y')
+
+                # metadata display (title/description + README)
+                meta_text = tk.Text(details_frame, height=8, wrap='word')
+                meta_text.pack(fill='x', padx=4, pady=4)
+
+                # files box with multi-select and scrollbar
+                files_label = tk.Label(details_frame, text='文件:')
+                files_label.pack(anchor='w', padx=4)
+                files_box = tk.Listbox(details_frame, selectmode='multiple', height=10)
+                files_box.pack(fill='both', expand=False, padx=4, pady=4)
+                files_scroll = tk.Scrollbar(details_frame, command=files_box.yview)
+                files_scroll.pack(side='right', fill='y')
+                files_box.config(yscrollcommand=files_scroll.set)
+            except Exception:
+                # fallback to simple single-column layout
+                results_frame = tk.Frame(dlg)
+                results_frame.pack(fill='both', expand=True, padx=8, pady=4)
+                results_box = tk.Listbox(results_frame)
+                results_box.pack(side='left', fill='both', expand=True)
+                scrollbar = tk.Scrollbar(results_frame, command=results_box.yview)
+                scrollbar.pack(side='right', fill='y')
+                results_box.config(yscrollcommand=scrollbar.set)
+                files_box = tk.Listbox(dlg)
+                files_box.pack(fill='both', expand=False, padx=8, pady=4)
+                meta_text = None
+
+            def do_search():
+                q = query_var.get() if hasattr(query_var, 'get') else ''
+                if not q:
+                    return
+                try:
+                    # prefer explicit hf_api_base from prefs
+                    api_base = None
+                    try:
+                        explicit = self.start_context.get('hf_api_base') if isinstance(self.start_context, dict) else None
+                        if explicit:
+                            api_base = explicit.rstrip('/')
+                        else:
+                            mirror_choice_raw = self.mirror_var.get() if hasattr(self, 'mirror_var') else 'auto'
+                            mc = _resolve_mirror_choice(mirror_choice_raw)
+                            if isinstance(mc, str) and mc.startswith('http'):
+                                api_base = mc.rstrip('/') + '/api'
+                    except:
+                        api_base = None
+                    results = hf_browser.search_models(q, limit=30, api_base=api_base) if hf_browser else []
+                except:
+                    results = []
+                try:
+                    import logging
+                    logging.getLogger().debug(f"HF search got {len(results)} results for query '{q}'")
+                    if results_box is not None:
+                        results_box.delete(0, 'end')
+                        for r in results:
+                            display = f"{r.get('modelId')} - {r.get('pipeline_tag') or r.get('task') or ''}"
+                            results_box.insert('end', display)
+                except Exception:
+                    import traceback
+                    traceback.print_exc()
+
+                # attach result metadata
+                dlg._hf_results = results
+
+            def on_result_select(evt=None):
+                try:
+                    sel = None
+                    if ctk:
+                        # parse selected line from textbox by cursor
+                        try:
+                            idx = results_box.index('insert')
+                            line = results_box.get(idx + ' linestart', idx + ' lineend')
+                            sel = line.split('-')[0].strip()
+                        except:
+                            sel = None
+                    else:
+                        s = results_box.curselection()
+                        if s:
+                            sel = results_box.get(s[0])
+                    if not sel:
+                        return
+                    results = getattr(dlg, '_hf_results', []) or []
+                    repo = None
+                    for r in results:
+                        if r.get('modelId') == sel:
+                            repo = r
+                            break
+                    if not repo:
+                        return
+                    api_base = None
+                    try:
+                        explicit = self.start_context.get('hf_api_base') if isinstance(self.start_context, dict) else None
+                        if explicit:
+                            api_base = explicit.rstrip('/')
+                        else:
+                            mirror_choice_raw = self.mirror_var.get() if hasattr(self, 'mirror_var') else 'auto'
+                            mc = _resolve_mirror_choice(mirror_choice_raw)
+                            if isinstance(mc, str) and mc.startswith('http'):
+                                api_base = mc.rstrip('/') + '/api'
+                    except:
+                        api_base = None
+                    # fetch metadata and files with sizes
+                    meta = hf_browser.get_model_metadata(sel, api_base=api_base) if hf_browser else {}
+                    files = hf_browser.list_model_files(sel, api_base=api_base) if hf_browser else []
+                    # show metadata and README
+                    try:
+                        if meta_text is not None:
+                            meta_text.delete('1.0', 'end')
+                            title = meta.get('modelId') or sel
+                            desc = meta.get('pipeline_tag') or meta.get('task') or meta.get('description') or ''
+                            meta_text.insert('1.0', f"{title}\n\n{desc}\n\n")
+                            # try to fetch README if available (do this asynchronously to avoid UI freeze)
+                            try:
+                                def fetch_and_show_readme(repo_id=sel, api_base_local=api_base, target_widget=meta_text):
+                                    try:
+                                        readme = hf_browser.get_model_readme(repo_id, api_base=api_base_local) if hf_browser else ''
+                                    except Exception:
+                                        readme = ''
+                                    if not readme:
+                                        return
+                                    def _show():
+                                        try:
+                                            target_widget.insert('end', "--- README (preview) ---\n")
+                                            # try to render markdown to HTML when possible
+                                            html = None
+                                            try:
+                                                from markdown import markdown as _md
+                                                html = _md(readme)
+                                            except Exception:
+                                                html = None
+                                            try:
+                                                # prefer HTML rendering if tkhtmlview present
+                                                from tkhtmlview import HTMLLabel
+                                                pv = tk.Toplevel(dlg)
+                                                pv.title(f"README: {repo_id}")
+                                                h = HTMLLabel(pv, html=html or ('<pre>' + readme + '</pre>'))
+                                                h.pack(fill='both', expand=True)
+                                            except Exception:
+                                                # fallback: insert plain text excerpt in the meta box
+                                                target_widget.insert('end', readme[:20000])
+                                        except Exception:
+                                            pass
+                                    try:
+                                        self.root.after(1, _show)
+                                    except Exception:
+                                        _show()
+                                threading.Thread(target=fetch_and_show_readme, daemon=True).start()
+                            except:
+                                pass
+                    except:
+                        pass
+                    files_box.delete(0, 'end')
+                    # recommended patterns
+                    recommended = ['README', 'README.md', 'config.json', 'pytorch_model.bin', 'model_index.json', 'adapter_config.json']
+                    for f in files:
+                        name = f.get('name') if isinstance(f, dict) else str(f)
+                        size = f.get('size') if isinstance(f, dict) else None
+                        size_str = f" ({size} bytes)" if size else ''
+                        display = f"{name}{size_str}"
+                        files_box.insert('end', display)
+                    # auto-select recommended files
+                    try:
+                        for idx in range(files_box.size()):
+                            val = files_box.get(idx)
+                            for pat in recommended:
+                                if pat.lower() in val.lower():
+                                    files_box.select_set(idx)
+                                    break
+                    except:
+                        pass
+
+                    # add quick action buttons below files: select recommended / clear
+                    try:
+                        def select_recommended():
+                            try:
+                                for idx in range(files_box.size()):
+                                    val = files_box.get(idx)
+                                    for pat in recommended:
+                                        if pat.lower() in val.lower():
+                                            files_box.select_set(idx)
+                                            break
+                            except:
+                                pass
+
+                        def clear_selection():
+                            try:
+                                files_box.selection_clear(0, 'end')
+                            except:
+                                pass
+
+                        sel_frame = tk.Frame(details_frame)
+                        sel_frame.pack(fill='x', padx=4, pady=(2,8))
+                        sel_btn = tk.Button(sel_frame, text='选择推荐', command=select_recommended)
+                        sel_btn.pack(side='left', padx=4)
+                        clr_btn = tk.Button(sel_frame, text='清除选择', command=clear_selection)
+                        clr_btn.pack(side='left', padx=4)
+
+                        def preview_selected():
+                            try:
+                                sel_repo = getattr(dlg, '_hf_selected', None)
+                                if not sel_repo:
+                                    return
+                                # determine api_base/raw base
+                                api_base = None
+                                try:
+                                    explicit = self.start_context.get('hf_api_base') if isinstance(self.start_context, dict) else None
+                                    if explicit:
+                                        api_base = explicit.rstrip('/')
+                                    else:
+                                        mirror_choice_raw = self.mirror_var.get() if hasattr(self, 'mirror_var') else 'auto'
+                                        mc = _resolve_mirror_choice(mirror_choice_raw)
+                                        if isinstance(mc, str) and mc.startswith('http'):
+                                            api_base = mc.rstrip('/') + '/api'
+                                except:
+                                    api_base = None
+
+                                # pick first selected file
+                                idxs = files_box.curselection()
+                                if not idxs:
+                                    if files_box.size() == 0:
+                                        return
+                                    idx = 0
+                                else:
+                                    idx = idxs[0]
+                                val = files_box.get(idx)
+                                # extract filename before ' (' if present
+                                fname = val.split(' (', 1)[0].strip()
+
+                                # If the file looks like a README or text file, prefer hf_browser's readme getter
+                                lower = fname.lower()
+                                is_text_like = lower.startswith('readme') or lower.endswith(('.md', '.markdown', '.txt', '.json'))
+
+                                def show_preview_content(content, content_type='text'):
+                                    try:
+                                        pv = tk.Toplevel(dlg)
+                                        pv.title(f'预览: {fname}')
+                                        if content_type == 'html':
+                                            try:
+                                                from tkhtmlview import HTMLLabel
+                                                h = HTMLLabel(pv, html=content)
+                                                h.pack(fill='both', expand=True)
+                                                return
+                                            except Exception:
+                                                pass
+                                        txt = tk.Text(pv, wrap='word')
+                                        txt.pack(fill='both', expand=True)
+                                        txt.insert('1.0', content[:20000])
+                                    except Exception:
+                                        pass
+
+                                # fetch and show asynchronously to avoid blocking UI
+                                def fetch_and_preview():
+                                    r = None
+                                    text_content = None
+                                    try:
+                                        if is_text_like and hf_browser:
+                                            try:
+                                                text_content = hf_browser.get_model_readme(sel_repo, api_base=api_base)
+                                            except Exception:
+                                                text_content = None
+                                        # fallback to direct GET if we don't have content yet
+                                        if not text_content:
+                                            raw_base = 'https://huggingface.co'
+                                            if api_base and isinstance(api_base, str) and api_base.startswith('http'):
+                                                raw_base = api_base.rstrip('/')
+                                                if raw_base.endswith('/api'):
+                                                    raw_base = raw_base[:-4]
+                                            url = f"{raw_base}/{sel_repo}/resolve/main/{fname}"
+                                            import requests as _req
+                                            try:
+                                                r = _req.get(url, timeout=15, allow_redirects=True, headers={
+                                                    'User-Agent': 'Mozilla/5.0',
+                                                    'Accept': 'text/markdown, text/plain, */*',
+                                                    'Referer': f'https://huggingface.co/{sel_repo}',
+                                                })
+                                            except Exception:
+                                                r = None
+                                            if r and r.status_code == 200:
+                                                ctype = r.headers.get('Content-Type','')
+                                                try:
+                                                    if 'text' in ctype or 'markdown' in ctype or 'json' in ctype:
+                                                        text_content = r.text
+                                                except Exception:
+                                                    text_content = None
+                                    except Exception:
+                                        pass
+
+                                    if text_content:
+                                        # try render markdown->html then show
+                                        try:
+                                            from markdown import markdown as _md
+                                            html = None
+                                            try:
+                                                html = _md(text_content)
+                                            except Exception:
+                                                html = None
+                                            if html:
+                                                try:
+                                                    self.root.after(1, lambda: show_preview_content(html, 'html'))
+                                                    return
+                                                except Exception:
+                                                    pass
+                                        except Exception:
+                                            pass
+                                        try:
+                                            self.root.after(1, lambda: show_preview_content(text_content, 'text'))
+                                        except Exception:
+                                            show_preview_content(text_content, 'text')
+                                    else:
+                                        # no textual content; show binary/info message
+                                        size = None
+                                        try:
+                                            size = r.headers.get('Content-Length') if r else None
+                                        except Exception:
+                                            size = None
+                                        try:
+                                            self.root.after(1, lambda: messagebox.showinfo('二进制文件', f'文件 {fname} 大小: {size or "未知"} 字节（未显示内容）'))
+                                        except Exception:
+                                            try:
+                                                messagebox.showinfo('二进制文件', f'文件 {fname} 大小: {size or "未知"} 字节（未显示内容）')
+                                            except:
+                                                pass
+
+                                try:
+                                    threading.Thread(target=fetch_and_preview, daemon=True).start()
+                                except Exception:
+                                    pass
+                            except:
+                                pass
+
+                        pv_btn = tk.Button(sel_frame, text='预览选中文件', command=preview_selected)
+                        pv_btn.pack(side='left', padx=4)
+                        # 按钮：查看原始响应（展示 temp/hf_raw_responses 中保存的 HTML 响应）
+                        def open_raw_responses_dialog():
+                            try:
+                                rr_dir = Path('temp') / 'hf_raw_responses'
+                                if not rr_dir.exists() or not rr_dir.is_dir():
+                                    try:
+                                        messagebox.showinfo('原始响应', '未找到 temp/hf_raw_responses 目录或没有原始响应文件')
+                                    except:
+                                        pass
+                                    return
+                                files = sorted([p for p in rr_dir.glob('*') if p.is_file()], key=lambda x: x.name)
+                                if not files:
+                                    try:
+                                        messagebox.showinfo('原始响应', '未发现原始响应文件')
+                                    except:
+                                        pass
+                                    return
+                                win = tk.Toplevel(dlg)
+                                win.title('原始响应 - hf_raw_responses')
+                                win.geometry('800x480')
+                                # 左侧列表
+                                leftf = tk.Frame(win, width=300)
+                                leftf.pack(side='left', fill='y', padx=4, pady=4)
+                                lb = tk.Listbox(leftf, width=40, height=24, selectmode='extended')
+                                lb.pack(side='left', fill='y')
+                                sb = tk.Scrollbar(leftf, command=lb.yview)
+                                sb.pack(side='right', fill='y')
+                                lb.config(yscrollcommand=sb.set)
+                                for p in files:
+                                    lb.insert('end', p.name)
+                                # 右侧信息/预览区域
+                                rightf = tk.Frame(win)
+                                rightf.pack(side='right', fill='both', expand=True, padx=4, pady=4)
+                                info_txt = tk.Text(rightf, wrap='word')
+                                info_txt.pack(fill='both', expand=True, padx=4, pady=4)
+
+                                # actions
+                                af = tk.Frame(win)
+                                af.pack(side='bottom', fill='x', padx=4, pady=6)
+
+                                def refresh_listbox():
+                                    try:
+                                        files_local = sorted([p for p in rr_dir.glob('*') if p.is_file()], key=lambda x: x.name)
+                                        lb.delete(0, 'end')
+                                        for p in files_local:
+                                            lb.insert('end', p.name)
+                                    except:
+                                        pass
+
+                                def preview_selected_raw():
+                                    seli = lb.curselection()
+                                    if not seli:
+                                        try:
+                                            messagebox.showinfo('预览', '请选择一个文件用于预览')
+                                        except:
+                                            pass
+                                        return
+                                    p = rr_dir / lb.get(seli[0])
+                                    try:
+                                        content = p.read_text(encoding='utf-8', errors='ignore')
+                                    except Exception as e:
+                                        try:
+                                            messagebox.showwarning('读取失败', f'无法读取文件: {e}')
+                                        except:
+                                            pass
+                                        return
+                                    # 尝试用 tkhtmlview 渲染 HTML；失败则用默认浏览器打开；最后回退到纯文本
+                                    try:
+                                        from tkhtmlview import HTMLLabel
+                                        pv = tk.Toplevel(win)
+                                        pv.title(f'原始响应预览: {p.name}')
+                                        h = HTMLLabel(pv, html=content)
+                                        h.pack(fill='both', expand=True)
+                                        return
+                                    except Exception:
+                                        pass
+                                    try:
+                                        import webbrowser
+                                        webbrowser.open(p.resolve().as_uri())
+                                        return
+                                    except Exception:
+                                        pass
+                                    try:
+                                        info_txt.delete('1.0', 'end')
+                                        info_txt.insert('1.0', content[:20000])
+                                    except:
+                                        pass
+
+                                def show_analysis():
+                                    seli = lb.curselection()
+                                    targets = []
+                                    if seli:
+                                        targets = [rr_dir / lb.get(seli[0])]
+                                    else:
+                                        targets = sorted([p for p in rr_dir.glob('*.html') if p.is_file()], key=lambda x: x.name)
+                                    if not targets:
+                                        try:
+                                            messagebox.showinfo('分析', '没有找到要分析的 HTML 文件')
+                                        except:
+                                            pass
+                                        return
+                                    import re
+                                    out = []
+                                    out.append(f'分析 {len(targets)} 个文件:\n')
+                                    for f in targets:
+                                        try:
+                                            t = f.read_text(encoding='utf-8', errors='ignore')
+                                            low = t.lower()
+                                            title = ''
+                                            ts = low.find('<title>')
+                                            te = low.find('</title>')
+                                            if ts != -1 and te != -1 and te > ts:
+                                                title = t[ts+7:te].strip()
+                                            body = re.sub('<[^<]+?>', ' ', t)
+                                            body = ' '.join(body.split())
+                                            has_warn = any(k in body for k in ('警告', 'warning', 'access denied', '403', '404', 'captcha'))
+                                            excerpt = body[:800]
+                                            out.append(f'--- {f.name} ---')
+                                            out.append(f'Title: {title}')
+                                            out.append(f'Contains warning-like text: {has_warn}')
+                                            out.append(f'Excerpt: {excerpt}\n')
+                                        except Exception as e:
+                                            out.append(f'--- {f.name} --- parse error: {e}\n')
+                                    try:
+                                        info_txt.delete('1.0', 'end')
+                                        info_txt.insert('1.0', '\n'.join(out))
+                                    except Exception:
+                                        pass
+
+                                def export_selected_zip():
+                                    try:
+                                        seli = lb.curselection()
+                                        tozip = []
+                                        if seli:
+                                            tozip = [rr_dir / lb.get(i) for i in seli]
+                                        else:
+                                            tozip = sorted([p for p in rr_dir.glob('*') if p.is_file()], key=lambda x: x.name)
+                                        if not tozip:
+                                            try:
+                                                messagebox.showinfo('导出', '没有文件可供打包')
+                                            except:
+                                                pass
+                                            return
+                                        dst = filedialog.asksaveasfilename(defaultextension='.zip', filetypes=[('Zip files','*.zip')], title='保存为')
+                                        if not dst:
+                                            return
+                                        import zipfile
+                                        try:
+                                            with zipfile.ZipFile(dst, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+                                                for f in tozip:
+                                                    zf.write(f, arcname=f.name)
+                                            try:
+                                                messagebox.showinfo('导出', f'已保存: {dst}')
+                                            except:
+                                                pass
+                                        except Exception as e:
+                                            try:
+                                                messagebox.showwarning('导出失败', f'打包失败: {e}')
+                                            except:
+                                                pass
+                                    except Exception:
+                                        pass
+
+                                # action 按钮
+                                btn_preview = tk.Button(af, text='预览原始文件', command=preview_selected_raw)
+                                btn_preview.pack(side='left', padx=6)
+                                btn_analyze = tk.Button(af, text='生成/查看分析', command=show_analysis)
+                                btn_analyze.pack(side='left', padx=6)
+                                btn_export = tk.Button(af, text='导出打包', command=export_selected_zip)
+                                btn_export.pack(side='left', padx=6)
+                                btn_refresh = tk.Button(af, text='刷新列表', command=refresh_listbox)
+                                btn_refresh.pack(side='right', padx=6)
+                            except Exception:
+                                pass
+
+                        raw_btn = tk.Button(sel_frame, text='查看原始响应', command=open_raw_responses_dialog)
+                        raw_btn.pack(side='left', padx=4)
+                    except:
+                        pass
+                    dlg._hf_selected = sel
+                except:
+                    pass
+
+            try:
+                if not ctk:
+                    results_box.bind('<<ListboxSelect>>', on_result_select)
+            except:
+                pass
+
+            def do_download():
+                try:
+                    sel = getattr(dlg, '_hf_selected', None)
+                    if not sel:
+                        return
+                    sel_files = []
+                    try:
+                        for idx in files_box.curselection():
+                            sel_files.append(files_box.get(idx))
+                    except:
+                        # if empty, try first file
+                        try:
+                            if files_box.size() > 0:
+                                sel_files.append(files_box.get(0))
+                        except:
+                            pass
+                    mirror_choice_raw = self.mirror_var.get() if hasattr(self, 'mirror_var') else 'auto'
+                    mirror_choice = _resolve_mirror_choice(mirror_choice_raw)
+                    for fn in sel_files:
+                        # run download in background
+                        def worker(repo_id=sel, filename=fn, mc=mirror_choice):
+                            try:
+                                models_dir = Path('models')
+                                from threading import Event
+                                stop = Event()
+                                def cb(msg, pct):
+                                    try:
+                                        if ctk:
+                                            self.status_label.configure(text=f"HF:{msg} {pct}%")
+                                        else:
+                                            self.status_label.config(text=f"HF:{msg} {pct}%")
+                                    except:
+                                        pass
+                                hf_browser.download_from_hf(repo_id, filename, models_dir, mirror_choice=mc, callback=cb, stop_event=stop)
+                                try:
+                                    if ctk:
+                                        self.status_label.configure(text=f"下载完成: {filename}")
+                                    else:
+                                        self.status_label.config(text=f"下载完成: {filename}")
+                                except:
+                                    pass
+                            except:
+                                pass
+                        threading.Thread(target=worker, daemon=True).start()
+                except:
+                    pass
+
+            # download button
+            try:
+                if ctk:
+                    dbtn = ctk.CTkButton(dlg, text='下载选中文件', command=do_download)
+                    dbtn.pack(padx=8, pady=8)
+                else:
+                    dbtn = tk.Button(dlg, text='下载选中文件', command=do_download)
+                    dbtn.pack(padx=8, pady=8)
+            except:
+                pass
+        except Exception:
+            pass
         def start_prepare(env_name, progress_lbl, progress_bar=None, state=None):
             if not env_name:
                 try:
@@ -1558,6 +2563,11 @@ class MainApp:
                             pass
                     except:
                         pass
+                        # After refreshing controls, update details for current selection
+                        try:
+                            self._on_model_change()
+                        except:
+                            pass
                 else:
                     try:
                         menu = self.device_menu["menu"]
@@ -1607,9 +2617,27 @@ class MainApp:
         self.refresh_model_list()
 
 
-def run_app():
-    app = MainApp()
+def run_app(context=None):
+    """Run the CTk frontend. Accepts optional context dict passed from launcher.
+
+    Context keys (optional):
+      - project_root: str
+      - resources_dir: str
+      - mirror: str
+    """
+    app = MainApp(start_context=context)
     app.setup()
+    # apply any start_context settings to UI controls (best-effort)
+    try:
+        if context and isinstance(context, dict):
+            try:
+                if 'mirror' in context and getattr(app, 'mirror_var', None) is not None:
+                    app._safe_set_var(app.mirror_var, context.get('mirror'))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     if ctk:
         app.root.mainloop()
     else:

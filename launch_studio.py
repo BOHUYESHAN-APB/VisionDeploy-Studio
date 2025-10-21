@@ -8,6 +8,21 @@ import sys
 import os
 import locale
 from pathlib import Path
+import argparse
+import logging
+
+# setup minimal logger early so we can capture messages during startup
+def configure_logging(level: str = 'INFO'):
+    try:
+        lvl = getattr(logging, level.upper(), logging.INFO)
+    except Exception:
+        lvl = logging.INFO
+    logs_dir = Path('logs')
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    logfile = logs_dir / 'visiondeploy.log'
+    handlers = [logging.StreamHandler(sys.stdout), logging.FileHandler(logfile, encoding='utf-8')]
+    logging.basicConfig(level=lvl, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', handlers=handlers)
+    logging.getLogger().info(f"日志已配置 level={level} -> {logfile}")
 
 def check_dependencies():
     """检查并按需安装所需依赖（按模块导入检测，按需 pip 安装）"""
@@ -99,18 +114,29 @@ def load_chinese_fonts():
     delegate to legacy code only when explicitly needed.
     """
     try:
-        # Use the shim which will call the legacy initializer on demand
+        # Use the shim which will call the legacy initializer on demand.
+        # Pass project_root when available to shims that need it.
         from app.font_initializer import initialize_chinese_font
-        return initialize_chinese_font()
+        try:
+            project_root = Path(__file__).parent
+            return initialize_chinese_font(project_root)
+        except TypeError:
+            # shim may accept no args (backwards compatible); fall back
+            return initialize_chinese_font()
     except Exception as e:
         print(f"⚠️ 加载中文字体失败（已降级）：{e}")
         return False
 
 def main():
     """主函数"""
-    print("🎯 VisionDeploy Studio - AI模型部署平台")
-    print("📝 专注于计算机视觉模型的本地部署")
-    print("=" * 50)
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--log-level', default=os.environ.get('VISIONDEPLOY_LOG', 'INFO'), help='日志级别 (DEBUG/INFO/WARNING/ERROR)')
+    args, _ = parser.parse_known_args()
+    configure_logging(args.log_level)
+
+    logging.getLogger().info("🎯 VisionDeploy Studio - AI模型部署平台")
+    logging.getLogger().info("📝 专注于计算机视觉模型的本地部署")
+    logging.getLogger().info("=" * 50)
     
     # 设置环境
     setup_environment()
@@ -166,7 +192,17 @@ def main():
                 try:
                     from app.gui_ctk import run_app as run_ctk_app
                     print("\n✅ 检测到 customtkinter，启动 CTk 前端...")
-                    run_ctk_app()
+                    try:
+                        resources_dir = project_root / 'resources'
+                        mirror_choice = os.environ.get('VISIONDEPLOY_MIRROR', 'auto')
+                        ctx = { 'project_root': str(project_root), 'resources_dir': str(resources_dir), 'mirror': mirror_choice }
+                    except Exception:
+                        ctx = None
+                    # Try calling with context, fall back if the function doesn't accept args
+                    try:
+                        run_ctk_app(ctx)
+                    except TypeError:
+                        run_ctk_app()
                     sys.exit(0)
                 except Exception as e:
                     print(f"启动 CTk 前端失败，回退：{e}")
@@ -177,7 +213,11 @@ def main():
                 try:
                     from app.gui_pyside import run_app as run_pyside_app
                     print("\n✅ 检测到 PySide6，启动 PySide6 前端...")
-                    run_pyside_app()
+                    try:
+                        # pass same ctx if available
+                        run_pyside_app(ctx)
+                    except TypeError:
+                        run_pyside_app()
                     sys.exit(0)
                 except Exception as e:
                     print(f"启动 PySide6 前端失败，回退：{e}")
