@@ -38,6 +38,9 @@ resources/python/
 resources/models/
 *.zip
 *.tar.gz
+models/
+temp/hf_raw_responses/
+temp/models_downloads/
 
 # Logs
 *.log

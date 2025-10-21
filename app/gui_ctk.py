@@ -23,6 +23,7 @@ import tkinter.font as tkfont
 import platform
 import subprocess
 import inspect
+import shutil
 
 from tkinter import filedialog, messagebox
 
@@ -49,6 +50,10 @@ except Exception:
     download_model = lambda *a, **k: None
     find_local_models = lambda *a, **k: []
     import_local_model = lambda *a, **k: None
+try:
+    import app.model_manager as _model_manager_mod
+except Exception:
+    _model_manager_mod = None
 
 # font initializer fallbacks
 try:
@@ -308,7 +313,28 @@ class ModelManagerDialog(ctk.CTkToplevel if ctk else tk.Toplevel):
                         mirror_choice = _resolve_mirror_choice(raw)
                 except:
                     mirror_choice = 'auto'
-                p = download_model(model_id, mirror=mirror_choice, callback=progress_cb, stop_event=stop_event)
+                # If built-in models DB is disabled, open HF browser for the user to download via HF UI
+                try:
+                    use_local_db = getattr(_model_manager_mod, 'USE_LOCAL_MODELS_DB', False) if _model_manager_mod else False
+                except:
+                    use_local_db = False
+                if not use_local_db:
+                    # open HF browser to let user pick and download (safe fallback)
+                    try:
+                        parent_app = getattr(self, 'parent', None)
+                        if parent_app and hasattr(parent_app, 'open_hf_browser'):
+                            parent_app.open_hf_browser()
+                        else:
+                            try:
+                                self.open_hf_browser()
+                            except:
+                                pass
+                        status_msg = '已切换到 HF 浏览（请使用浏览器下载到本地 temp/）'
+                        p = None
+                    except Exception:
+                        p = None
+                else:
+                    p = download_model(model_id, mirror=mirror_choice, callback=progress_cb, stop_event=stop_event)
                 if p:
                     status_msg = f"下载完成: {Path(p).name}"
                 else:
@@ -320,8 +346,8 @@ class ModelManagerDialog(ctk.CTkToplevel if ctk else tk.Toplevel):
             except Exception as e:
                 status_msg = f"下载异常: {e}"
             # 更新对话框内状态
-            try:
-                self._set_status(status_msg)
+            # 更新对话框内状态
+            
             except:
                 pass
             # 尝试更新父窗口的状态栏（若存在）
@@ -744,8 +770,11 @@ class MainApp:
             # action buttons and quant options
             act_frame = ctk.CTkFrame(right)
             act_frame.pack(padx=6, pady=4, anchor="nw")
-            self.download_model_btn = ctk.CTkButton(act_frame, text="下载模型", command=self._on_download_selected_model)
+            self.download_model_btn = ctk.CTkButton(act_frame, text="下载到 temp", command=self._on_download_selected_model)
             self.download_model_btn.pack(side="left", padx=6)
+            # import downloaded models from temp
+            self.import_downloaded_btn = ctk.CTkButton(act_frame, text="导入已下载模型", command=self._on_import_downloaded_model)
+            self.import_downloaded_btn.pack(side="left", padx=6)
             self.use_model_btn = ctk.CTkButton(act_frame, text="使用此模型", command=self._on_use_selected_model)
             self.use_model_btn.pack(side="left", padx=6)
             self.open_folder_btn = ctk.CTkButton(act_frame, text="打开模型目录", command=self._on_open_model_folder)
@@ -780,8 +809,13 @@ class MainApp:
             # action buttons and quant options for tkinter
             act_frame = tk.Frame(right)
             act_frame.pack(padx=6, pady=4, anchor="nw")
-            self.download_model_btn = tk.Button(act_frame, text="下载模型", command=self._on_download_selected_model)
+            self.download_model_btn = tk.Button(act_frame, text="下载到 temp", command=self._on_download_selected_model)
             self.download_model_btn.pack(side="left", padx=6)
+            try:
+                self.import_downloaded_btn = tk.Button(act_frame, text="导入已下载模型", command=self._on_import_downloaded_model)
+                self.import_downloaded_btn.pack(side="left", padx=6)
+            except Exception:
+                pass
             self.use_model_btn = tk.Button(act_frame, text="使用此模型", command=self._on_use_selected_model)
             self.use_model_btn.pack(side="left", padx=6)
             self.open_folder_btn = tk.Button(act_frame, text="打开模型目录", command=self._on_open_model_folder)
@@ -1187,47 +1221,58 @@ class MainApp:
         model_id = sel.split('(')[-1].strip(')')
 
         def worker():
+            td = Path('temp') / 'models_downloads'
+            td.mkdir(parents=True, exist_ok=True)
+            saved_path = None
+
+            # 1) 尝试使用 hf_browser.download_repo
             try:
-                if 'download_model' in globals() and callable(download_model):
-                    def progress_cb(msg, pct):
-                        try:
-                            if ctk:
-                                self.status_label.configure(text=f"{msg} ({pct}%)")
-                            else:
-                                self.status_label.config(text=f"{msg} ({pct}%)")
-                        except:
-                            pass
-                    # resolve mirror from left-side selection if available
-                    try:
-                        mirror_val = 'auto'
-                        if hasattr(self, 'mirror_var') and getattr(self, 'mirror_var') is not None:
-                            mirror_val = _resolve_mirror_choice(self.mirror_var.get())
-                    except:
-                        mirror_val = 'auto'
-                    download_model(model_id, mirror=mirror_val, callback=progress_cb)
-                    try:
-                        if ctk:
-                            self.status_label.configure(text='下载完成')
-                        else:
-                            self.status_label.config(text='下载完成')
-                    except:
-                        pass
-                else:
-                    try:
-                        if ctk:
-                            self.status_label.configure(text='下载接口不可用')
-                        else:
-                            self.status_label.config(text='下载接口不可用')
-                    except:
-                        pass
-            except Exception as e:
+                if hf_browser and hasattr(hf_browser, 'download_repo'):
+                    dest = td / model_id.replace('/', '_')
+                    dest.mkdir(parents=True, exist_ok=True)
+                    ok = hf_browser.download_repo(model_id, str(dest))
+                    if ok:
+                        saved_path = str(dest)
+            except Exception:
+                saved_path = None
+
+            # 2) 回退到 download_model
+            if not saved_path:
                 try:
+                    if 'download_model' in globals() and callable(download_model):
+                        p = download_model(model_id, mirror=_resolve_mirror_choice(self.mirror_var.get() if hasattr(self, 'mirror_var') else 'auto'))
+                        # download_model may return a path or None
+                        if p:
+                            try:
+                                src = Path(p)
+                                dest = td / src.name
+                                if src.exists():
+                                    try:
+                                        shutil.move(str(src), str(dest))
+                                        saved_path = str(dest)
+                                    except Exception:
+                                        saved_path = str(src)
+                                else:
+                                    saved_path = str(p)
+                            except Exception:
+                                saved_path = str(p)
+                except Exception:
+                    saved_path = None
+
+            # update UI status
+            try:
+                if saved_path:
                     if ctk:
-                        self.status_label.configure(text=f'下载异常: {e}')
+                        self.status_label.configure(text=f'已下载到: {saved_path}')
                     else:
-                        self.status_label.config(text=f'下载异常: {e}')
-                except:
-                    pass
+                        self.status_label.config(text=f'已下载到: {saved_path}')
+                else:
+                    if ctk:
+                        self.status_label.configure(text='下载失败（请打开 HF 浏览器 手动下载）')
+                    else:
+                        self.status_label.config(text='下载失败（请打开 HF 浏览器 手动下载）')
+            except Exception:
+                pass
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1254,6 +1299,55 @@ class MainApp:
                 pass
         except:
             pass
+
+    def _on_import_downloaded_model(self):
+        """导入已下载到 temp/models_downloads 中的模型文件或目录（用户选择）"""
+        root = self.root if hasattr(self, 'root') else None
+        base = Path('temp') / 'models_downloads'
+        if not base.exists():
+            try:
+                messagebox.showinfo('导入', '没有找到已下载的模型目录 (temp/models_downloads)')
+            except:
+                pass
+            return
+        # Let user select a file inside the downloads folder
+        path = filedialog.askopenfilename(initialdir=str(base), parent=root, title='选择要导入的模型文件或仓库内文件')
+        if not path:
+            return
+
+        def worker():
+            try:
+                res = import_local_model(path)
+                if res:
+                    try:
+                        if ctk:
+                            self.status_label.configure(text=f'已导入: {Path(res).name}')
+                        else:
+                            self.status_label.config(text=f'已导入: {Path(res).name}')
+                    except:
+                        pass
+                else:
+                    try:
+                        if ctk:
+                            self.status_label.configure(text='导入失败')
+                        else:
+                            self.status_label.config(text='导入失败')
+                    except:
+                        pass
+            except Exception as e:
+                try:
+                    if ctk:
+                        self.status_label.configure(text=f'导入异常: {e}')
+                    else:
+                        self.status_label.config(text=f'导入异常: {e}')
+                except:
+                    pass
+            try:
+                self.refresh_local()
+            except:
+                pass
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _on_open_model_folder(self):
         # Attempt to open models resource folder or local model path
@@ -1839,6 +1933,124 @@ class MainApp:
 
                         pv_btn = tk.Button(sel_frame, text='预览选中文件', command=preview_selected)
                         pv_btn.pack(side='left', padx=4)
+                        dl_btn = tk.Button(sel_frame, text='下载到 temp (文件)', command=lambda: download_selected_to_temp(single=True))
+                        dl_btn.pack(side='left', padx=4)
+                        dl_repo_btn = tk.Button(sel_frame, text='下载到 temp (整仓)', command=lambda: download_selected_to_temp(single=False))
+                        dl_repo_btn.pack(side='left', padx=4)
+
+                        def download_selected_to_temp(single=True):
+                            sel_repo = getattr(dlg, '_hf_selected', None)
+                            if not sel_repo:
+                                return
+                            idxs = files_box.curselection()
+                            chosen = []
+                            if not idxs:
+                                if files_box.size() == 0:
+                                    return
+                                chosen = [files_box.get(0).split(' (',1)[0].strip()]
+                            else:
+                                for i in idxs:
+                                    chosen.append(files_box.get(i).split(' (',1)[0].strip())
+
+                            def _worker():
+                                td_base = Path('temp') / 'models_downloads'
+                                td_base.mkdir(parents=True, exist_ok=True)
+                                try:
+                                    if single:
+                                        fname = chosen[0]
+                                        p = None
+                                        try:
+                                            if hf_browser and hasattr(hf_browser, 'download_file_to_temp'):
+                                                p = hf_browser.download_file_to_temp(sel_repo, fname, td_base)
+                                        except Exception:
+                                            p = None
+                                        if p:
+                                            try:
+                                                self._safe_set_status(f'已下载到: {p}')
+                                                messagebox.showinfo('下载完成', f'已下载到: {p}')
+                                            except:
+                                                pass
+                                        else:
+                                            try:
+                                                show_lfs_clone_dialog(sel_repo)
+                                            except:
+                                                try:
+                                                    messagebox.showwarning('下载提示', '该文件可能由 Git LFS 托管或无法直接通过 HTTP 下载。请使用 git clone + git-lfs pull 获取完整内容。')
+                                                except:
+                                                    pass
+                                    else:
+                                        try:
+                                            dest = td_base / sel_repo.replace('/', '_')
+                                            dest.mkdir(parents=True, exist_ok=True)
+                                            ok = None
+                                            try:
+                                                if hf_browser and hasattr(hf_browser, 'download_repo'):
+                                                    ok = hf_browser.download_repo(sel_repo, dest)
+                                            except Exception:
+                                                ok = None
+                                            if ok:
+                                                try:
+                                                    self._safe_set_status(f'已下载仓库到: {dest}')
+                                                    messagebox.showinfo('下载完成', f'已下载仓库到: {dest}')
+                                                except:
+                                                    pass
+                                            else:
+                                                try:
+                                                    show_lfs_clone_dialog(sel_repo)
+                                                except:
+                                                    try:
+                                                        messagebox.showwarning('下载提示', '仓库下载未能完整获取（可能含 LFS 大文件）。请使用 git clone + git-lfs pull 获取完整模型。')
+                                                    except:
+                                                        pass
+                                        except Exception:
+                                            try:
+                                                messagebox.showinfo('下载失败', '仓库下载失败')
+                                            except:
+                                                pass
+                                except Exception:
+                                    pass
+
+                            try:
+                                threading.Thread(target=_worker, daemon=True).start()
+                            except Exception:
+                                pass
+
+                        def show_lfs_clone_dialog(repo_id: str):
+                            """Show a small dialog with git clone + git-lfs commands for the repo."""
+                            try:
+                                cmds = []
+                                clone_cmd = f"git clone https://huggingface.co/{repo_id}"
+                                cmds.append(clone_cmd)
+                                lfs_note = "# 然后进入目录并运行：\n# git lfs install && git lfs pull"
+                                full_text = clone_cmd + "\n\n" + lfs_note
+
+                                w = tk.Toplevel(dlg)
+                                w.title('使用 git + git-lfs 获取模型')
+                                w.geometry('640x240')
+                                lbl = tk.Label(w, text=f'仓库: {repo_id}\n该仓库可能包含大文件(LFS)，请在终端执行以下命令以获取完整权重:')
+                                lbl.pack(padx=8, pady=(8,4), anchor='w')
+                                txt = tk.Text(w, height=6, wrap='none')
+                                txt.pack(fill='both', expand=False, padx=8, pady=4)
+                                txt.insert('1.0', full_text)
+                                try:
+                                    def do_copy():
+                                        try:
+                                            self.root.clipboard_clear()
+                                            self.root.clipboard_append(full_text)
+                                            messagebox.showinfo('已复制', '命令已复制到剪贴板')
+                                        except:
+                                            pass
+                                    btn_frame2 = tk.Frame(w)
+                                    btn_frame2.pack(fill='x', padx=8, pady=8)
+                                    cpbtn = tk.Button(btn_frame2, text='复制命令到剪贴板', command=do_copy)
+                                    cpbtn.pack(side='left')
+                                except:
+                                    pass
+                            except Exception:
+                                try:
+                                    messagebox.showinfo('提示', f'请使用: git clone https://huggingface.co/{repo_id} 然后 git lfs pull')
+                                except:
+                                    pass
                         # 按钮：查看原始响应（展示 temp/hf_raw_responses 中保存的 HTML 响应）
                         def open_raw_responses_dialog():
                             try:

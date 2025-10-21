@@ -23,9 +23,17 @@ logger = logging.getLogger(__name__)
 MODELS_DB_PATH = Path("resources") / "models.json"
 DEFAULT_MODELS_DIR = Path("models")
 
+# By default, built-in models DB is disabled to enforce selecting models from HF.
+# Set USE_LOCAL_MODELS_DB=1 in environment or pass an explicit path to enable.
+USE_LOCAL_MODELS_DB = bool(os.environ.get('USE_LOCAL_MODELS_DB'))
+
 
 def load_models_db(path: Optional[Path] = None) -> Dict[str, Any]:
     p = Path(path) if path else MODELS_DB_PATH
+    # if the built-in models DB is disabled, return empty structure
+    if not USE_LOCAL_MODELS_DB:
+        logger.info("本地内置模型数据库被禁用（USE_LOCAL_MODELS_DB 未设置），返回空模型列表")
+        return {"models": []}
     if not p.exists():
         logger.warning(f"models.json 未找到: {p}")
         # 返回默认结构

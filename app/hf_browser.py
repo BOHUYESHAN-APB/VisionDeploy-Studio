@@ -371,3 +371,140 @@ def download_from_hf(repo_id: str, filename: str, dest_dir: Path, mirror_choice:
             except:
                 pass
         return None
+
+
+def _looks_like_lfs_pointer(text: str) -> bool:
+    """Simple heuristic: detect Git LFS pointer files which contain lines like:
+    version https://git-lfs.github.com/spec/v1
+    oid sha256:<hex>
+    size <number>
+    """
+    try:
+        if not text:
+            return False
+        if 'version https://git-lfs' in text and 'oid sha256' in text:
+            return True
+        return False
+    except:
+        return False
+
+
+def download_file_to_temp(repo_id: str, filename: str, dest_base: Path, mirror_choice: str = "auto") -> Optional[Path]:
+    """Download a single file from HF into dest_base/repo_id/filename.
+
+    Performs a lightweight LFS pointer detection and returns the saved path.
+    If file looks like LFS pointer, returns None and does NOT download large content.
+    """
+    try:
+        dest_dir = Path(dest_base) / repo_id.replace('/', '_')
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        # attempt a GET with small timeout to inspect headers/body
+        url = _construct_download_url(repo_id, filename, mirror_choice)
+        headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/octet-stream'}
+        r = requests.get(url, timeout=15, allow_redirects=True, headers=headers, stream=True)
+        if r.status_code != 200:
+            return None
+        # If content-type is text and small, check for LFS pointer
+        ctype = r.headers.get('Content-Type','')
+        clen = int(r.headers.get('Content-Length') or 0) if r.headers.get('Content-Length') else None
+        # read a small prefix to check for pointer
+        prefix = None
+        try:
+            prefix = r.content[:4096].decode('utf-8', errors='ignore')
+        except Exception:
+            prefix = None
+        if _looks_like_lfs_pointer(prefix or ''):
+            # LFS pointer detected; do not attempt to download the large binary here
+            return None
+        # otherwise stream to file
+        dest_path = Path(dest_dir) / filename
+        with dest_path.open('wb') as fw:
+            # if we already read content via r.content, write it
+            try:
+                if r.content:
+                    fw.write(r.content)
+                    return dest_path
+            except Exception:
+                pass
+            # fallback to iter_content
+            try:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        fw.write(chunk)
+            except Exception:
+                pass
+        return dest_path
+    except Exception:
+        return None
+
+
+def download_repo(repo_id: str, dest_dir: Path, api_base: Optional[str] = None, mirror_choice: str = "auto", callback=None, stop_event=None) -> Optional[Path]:
+    """Download a model repository by enumerating common files and downloading them into a folder.
+
+    This is a best-effort helper: it will call `list_model_files` to obtain a file list
+    (fallbacks to probing some common filenames) and then download each file under
+    `dest_dir / repo_id/`. Large repositories or LFS-backed models may still be
+    incomplete; this helper is intended for quick local testing and demo purposes.
+    """
+    try:
+        out_base = Path(dest_dir)
+        repo_folder = out_base / repo_id.replace('/', '_')
+        repo_folder.mkdir(parents=True, exist_ok=True)
+
+        if callback:
+            try:
+                callback(f"列出仓库文件: {repo_id}", 0)
+            except:
+                pass
+
+        files = list_model_files(repo_id, api_base=api_base) or []
+        # if list_model_files returned filename dicts, normalize
+        names = []
+        for it in files:
+            if isinstance(it, dict):
+                n = it.get('name') or it.get('path')
+            else:
+                n = str(it)
+            if n:
+                names.append(n)
+
+        # If no files discovered, fall back to a small set of common filenames
+        if not names:
+            names = ['README.md', 'README', 'config.json', 'pytorch_model.bin', 'model_index.json']
+
+        total = len(names)
+        idx = 0
+        for fname in names:
+            if stop_event and stop_event.is_set():
+                if callback:
+                    try:
+                        callback('cancelled', -1)
+                    except:
+                        pass
+                return None
+            idx += 1
+            if callback:
+                try:
+                    callback(f"下载 {fname} ({idx}/{total})", int(idx * 100 // max(1, total)))
+                except:
+                    pass
+            try:
+                # try downloading into repo_folder preserving filename
+                p = download_from_hf(repo_id, fname, repo_folder, mirror_choice=mirror_choice, callback=callback, stop_event=stop_event)
+                # if download failed for a particular file, continue with others
+            except Exception:
+                pass
+
+        if callback:
+            try:
+                callback('completed', 100)
+            except:
+                pass
+        return repo_folder
+    except Exception:
+        if callback:
+            try:
+                callback('error', -1)
+            except:
+                pass
+        return None
